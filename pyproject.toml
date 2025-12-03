@@ -1,0 +1,31 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "interp3d-avx2"
+version = "0.1.0"
+description = "Fast 3D trilinear interpolation using AVX2 SIMD instructions"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "BSD-3-Clause"}
+authors = [
+    {name = "Ilan Theodoro"}
+]
+keywords = ["interpolation", "simd", "avx2", "3d", "image-processing", "numpy"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+dependencies = [
+    "numpy>=1.20",
+]
+
+[tool.maturin]
+features = ["python"]
+python-source = "python"
+module-name = "interp3d_avx2"

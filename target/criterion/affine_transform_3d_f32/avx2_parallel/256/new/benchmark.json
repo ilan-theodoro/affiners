@@ -1,0 +1,1 @@
+{"group_id":"affine_transform_3d_f32","function_id":"avx2_parallel","value_str":"256","throughput":{"Elements":16777216},"full_id":"affine_transform_3d_f32/avx2_parallel/256","directory_name":"affine_transform_3d_f32/avx2_parallel/256","title":"affine_transform_3d_f32/avx2_parallel/256"}
