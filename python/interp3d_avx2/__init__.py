@@ -1,20 +1,39 @@
 """
-interp3d-avx2: Fast 3D trilinear interpolation using AVX2 SIMD
+interp3d-avx2: Fast 3D trilinear interpolation using AVX2/AVX512 SIMD
 
-This package provides high-performance 3D interpolation functions optimized
-for modern x86-64 processors with AVX2 support.
+Supported data types:
+- f32: affine_transform() - Standard floating point (~1.5 Gvoxels/s)
+- f16: affine_transform_f16() - Half precision, 2x less memory
+- u8: affine_transform_u8() - 2.2x faster (~3.3 Gvoxels/s), 4x less memory
 
 Example:
-    >>> import numpy as np
-    >>> from interp3d_avx2 import affine_transform
-    >>>
-    >>> input_data = np.random.rand(100, 100, 100).astype(np.float32)
-    >>> matrix = np.eye(3)
-    >>> offset = np.array([1.0, 2.0, 3.0])
-    >>> output = affine_transform(input_data, matrix, offset=offset)
+    >>> import interp3d_avx2
+    >>> print(interp3d_avx2.build_info())
+    {'version': '0.1.0', 'simd': {'avx2': True, 'avx512f': True, ...}, ...}
 """
 
-from .interp3d_avx2 import affine_transform, affine_transform_f64, affine_transform_f16
+from .interp3d_avx2 import (
+    affine_transform,
+    affine_transform_f16,
+    affine_transform_u8,
+    build_info,
+)
 
-__all__ = ["affine_transform", "affine_transform_f64", "affine_transform_f16"]
-__version__ = "0.1.0"
+# Get version and build info
+_info = build_info()
+__version__ = _info["version"]
+
+
+def __getattr__(name):
+    """Provide build info on attribute access."""
+    if name == "__version_info__":
+        return _info
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+__all__ = [
+    "affine_transform",
+    "affine_transform_f16",
+    "affine_transform_u8",
+    "build_info",
+]

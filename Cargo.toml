@@ -12,10 +12,6 @@ name = "interp3d_avx2"
 path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
-[[bench]]
-name = "interpolation"
-harness = false
-
 [dependencies]
 ndarray = "0.16"
 rayon = "1.10"
@@ -24,7 +20,6 @@ numpy = { version = "0.24", optional = true }
 pyo3 = { version = "0.24", features = ["extension-module"], optional = true }
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
 rand = "0.8"
 approx = "0.5"
 
@@ -34,11 +29,6 @@ parallel = []
 python = ["pyo3", "numpy"]
 
 [profile.release]
-lto = true
-codegen-units = 1
-opt-level = 3
-
-[profile.bench]
 lto = true
 codegen-units = 1
 opt-level = 3

@@ -1,1 +1,0 @@
-{"group_id":"affine_transform_3d_f64","function_id":"avx512","value_str":"128","throughput":{"Elements":2097152},"full_id":"affine_transform_3d_f64/avx512/128","directory_name":"affine_transform_3d_f64/avx512/128","title":"affine_transform_3d_f64/avx512/128"}
