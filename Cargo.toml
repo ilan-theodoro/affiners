@@ -1,26 +1,26 @@
 [package]
-name = "interp3d-avx2"
-version = "0.1.0"
+name = "affiners"
+version = "0.2.0"
 edition = "2021"
 authors = ["Ilan Theodoro"]
-description = "Fast 3D trilinear interpolation using AVX2 SIMD instructions"
+description = "Fast 3D affine transformations with trilinear interpolation using AVX2/AVX512 SIMD"
 license = "BSD-3-Clause"
-keywords = ["interpolation", "simd", "avx2", "3d", "image-processing"]
+keywords = ["affine", "interpolation", "simd", "avx2", "image-processing"]
 
 [lib]
-name = "interp3d_avx2"
+name = "affiners"
 path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-ndarray = "0.16"
-rayon = "1.10"
-half = "2.4"
-numpy = { version = "0.24", optional = true }
-pyo3 = { version = "0.24", features = ["extension-module"], optional = true }
+ndarray = "0.17"
+rayon = "1.11"
+half = "2.7"
+numpy = { version = "0.27", optional = true }
+pyo3 = { version = "0.27", features = ["extension-module"], optional = true }
 
 [dev-dependencies]
-rand = "0.8"
+rand = "0.9"
 approx = "0.5"
 
 [features]

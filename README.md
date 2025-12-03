@@ -1,6 +1,6 @@
-# interp3d-avx2
+# affiners
 
-Fast 3D trilinear interpolation using AVX2/AVX512 SIMD instructions.
+Fast 3D affine transformations with trilinear interpolation using AVX2/AVX512 SIMD.
 
 ## Performance
 
@@ -15,13 +15,13 @@ Fast 3D trilinear interpolation using AVX2/AVX512 SIMD instructions.
 ## Installation
 
 ```bash
-pip install interp3d-avx2
+pip install affiners
 ```
 
 Or build from source:
 
 ```bash
-maturin develop --release
+pip install .
 ```
 
 ## Usage
@@ -30,7 +30,7 @@ maturin develop --release
 
 ```python
 import numpy as np
-from interp3d_avx2 import affine_transform, affine_transform_u8
+import affiners
 
 # Define transformation
 matrix = np.array([
@@ -42,18 +42,29 @@ offset = np.array([-10.0, -5.0, 8.0])
 
 # Float32 data
 input_f32 = np.random.rand(512, 512, 512).astype(np.float32)
-output_f32 = affine_transform(input_f32, matrix, offset=offset)
+output_f32 = affiners.affine_transform(input_f32, matrix, offset=offset)
 
 # uint8 data (2.2x faster!)
 input_u8 = np.random.randint(0, 256, (512, 512, 512), dtype=np.uint8)
-output_u8 = affine_transform_u8(input_u8, matrix, offset=offset)
+output_u8 = affiners.affine_transform_u8(input_u8, matrix, offset=offset)
+```
+
+### Check Build Info
+
+```python
+import affiners
+
+print(affiners.__version__)  # '0.1.0'
+print(affiners.build_info())
+# {'version': '0.1.0', 'simd': {'avx2': True, 'avx512f': True, ...}, 
+#  'backend_f32': 'avx512', 'backend_u8': 'avx2', 'num_threads': 32, ...}
 ```
 
 ### Rust
 
 ```rust
 use ndarray::Array3;
-use interp3d_avx2::{affine_transform_3d_f32, affine_transform_3d_u8, AffineMatrix3D};
+use affiners::{affine_transform_3d_f32, affine_transform_3d_u8, AffineMatrix3D};
 
 // Float32
 let input_f32 = Array3::<f32>::zeros((100, 100, 100));
@@ -75,6 +86,7 @@ let output_u8 = affine_transform_3d_u8(&input_u8.view(), &matrix, &shift, 0);
 | `affine_transform(input, matrix, offset, cval)` | float32 | Standard floating point |
 | `affine_transform_f16(input, matrix, offset, cval)` | float16 | Half precision (pass as `.view(np.uint16)`) |
 | `affine_transform_u8(input, matrix, offset, cval)` | uint8 | **2.2x faster**, 4x less memory |
+| `build_info()` | - | Get version, SIMD features, and backend info |
 
 ### Parameters
 
@@ -107,6 +119,7 @@ let output_u8 = affine_transform_3d_u8(&input_u8.view(), &matrix, &shift, 0);
 - **Memory efficient**: u8 uses 4x less memory than f32
 - **Python bindings**: Via PyO3 and maturin
 - **Zero-copy**: Works directly with numpy arrays
+- **Native compilation**: Optimized for host CPU features (`target-cpu=native`)
 
 ## License
 

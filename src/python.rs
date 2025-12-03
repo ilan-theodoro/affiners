@@ -278,14 +278,14 @@ fn affine_transform_u8<'py>(
 // Module registration
 // =============================================================================
 
-/// Fast 3D trilinear interpolation using AVX2/AVX512 SIMD
+/// Fast 3D affine transformations with trilinear interpolation using AVX2/AVX512 SIMD
 ///
 /// Supported data types:
 /// - f32: affine_transform() - Standard floating point
 /// - f16: affine_transform_f16() - Half precision, 2x less memory
 /// - u8: affine_transform_u8() - 2.2x faster, 4x less memory
 #[pymodule]
-fn interp3d_avx2(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn affiners(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(affine_transform, m)?)?;
     m.add_function(wrap_pyfunction!(affine_transform_f16, m)?)?;
     m.add_function(wrap_pyfunction!(affine_transform_u8, m)?)?;

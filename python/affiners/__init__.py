@@ -1,5 +1,5 @@
 """
-interp3d-avx2: Fast 3D trilinear interpolation using AVX2/AVX512 SIMD
+affiners: Fast 3D affine transformations using AVX2/AVX512 SIMD
 
 Supported data types:
 - f32: affine_transform() - Standard floating point (~1.5 Gvoxels/s)
@@ -7,12 +7,12 @@ Supported data types:
 - u8: affine_transform_u8() - 2.2x faster (~3.3 Gvoxels/s), 4x less memory
 
 Example:
-    >>> import interp3d_avx2
-    >>> print(interp3d_avx2.build_info())
+    >>> import affiners
+    >>> print(affiners.build_info())
     {'version': '0.1.0', 'simd': {'avx2': True, 'avx512f': True, ...}, ...}
 """
 
-from .interp3d_avx2 import (
+from .affiners import (
     affine_transform,
     affine_transform_f16,
     affine_transform_u8,
@@ -37,3 +37,4 @@ __all__ = [
     "affine_transform_u8",
     "build_info",
 ]
+
