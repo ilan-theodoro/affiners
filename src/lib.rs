@@ -1,3 +1,6 @@
+// Allow unsafe operations in unsafe functions (Rust 2024 lint)
+#![allow(unsafe_op_in_unsafe_fn)]
+
 //! Fast 3D trilinear interpolation using AVX2/AVX512 SIMD instructions
 //!
 //! This crate provides high-performance 3D interpolation functions optimized
