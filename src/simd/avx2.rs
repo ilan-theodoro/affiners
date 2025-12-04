@@ -49,9 +49,15 @@ pub unsafe fn trilinear_3d_f32_avx2(
     let in_stride_y = w;
 
     let m = matrix.as_flat_f32();
-    let m00 = m[0]; let m01 = m[1]; let m02 = m[2];
-    let m10 = m[3]; let m11 = m[4]; let m12 = m[5];
-    let m20 = m[6]; let m21 = m[7]; let m22 = m[8];
+    let m00 = m[0];
+    let m01 = m[1];
+    let m02 = m[2];
+    let m10 = m[3];
+    let m11 = m[4];
+    let m12 = m[5];
+    let m20 = m[6];
+    let m21 = m[7];
+    let m22 = m[8];
 
     let shift_z = shift[0] as f32;
     let shift_y = shift[1] as f32;
@@ -67,10 +73,29 @@ pub unsafe fn trilinear_3d_f32_avx2(
             .enumerate()
             .for_each(|(oz, slice_z)| {
                 process_z_slice_f32(
-                    input_slice, slice_z, oz, oh, ow, d, h, w,
-                    in_stride_z, in_stride_y,
-                    m00, m01, m02, m10, m11, m12, m20, m21, m22,
-                    shift_z, shift_y, shift_x, cval_f32,
+                    input_slice,
+                    slice_z,
+                    oz,
+                    oh,
+                    ow,
+                    d,
+                    h,
+                    w,
+                    in_stride_z,
+                    in_stride_y,
+                    m00,
+                    m01,
+                    m02,
+                    m10,
+                    m11,
+                    m12,
+                    m20,
+                    m21,
+                    m22,
+                    shift_z,
+                    shift_y,
+                    shift_x,
+                    cval_f32,
                 );
             });
     }
@@ -79,10 +104,29 @@ pub unsafe fn trilinear_3d_f32_avx2(
     {
         for (oz, slice_z) in output_slice.chunks_mut(chunk_size).enumerate() {
             process_z_slice_f32(
-                input_slice, slice_z, oz, oh, ow, d, h, w,
-                in_stride_z, in_stride_y,
-                m00, m01, m02, m10, m11, m12, m20, m21, m22,
-                shift_z, shift_y, shift_x, cval_f32,
+                input_slice,
+                slice_z,
+                oz,
+                oh,
+                ow,
+                d,
+                h,
+                w,
+                in_stride_z,
+                in_stride_y,
+                m00,
+                m01,
+                m02,
+                m10,
+                m11,
+                m12,
+                m20,
+                m21,
+                m22,
+                shift_z,
+                shift_y,
+                shift_x,
+                cval_f32,
             );
         }
     }
@@ -101,10 +145,18 @@ unsafe fn process_z_slice_f32(
     w: usize,
     in_stride_z: usize,
     in_stride_y: usize,
-    m00: f32, m01: f32, m02: f32,
-    m10: f32, m11: f32, m12: f32,
-    m20: f32, m21: f32, m22: f32,
-    shift_z: f32, shift_y: f32, shift_x: f32,
+    m00: f32,
+    m01: f32,
+    m02: f32,
+    m10: f32,
+    m11: f32,
+    m12: f32,
+    m20: f32,
+    m21: f32,
+    m22: f32,
+    shift_z: f32,
+    shift_y: f32,
+    shift_x: f32,
     cval_f32: f32,
 ) {
     let one = _mm256_set1_ps(1.0);
@@ -123,8 +175,14 @@ unsafe fn process_z_slice_f32(
         // AVX2 loop - process 8 voxels at a time
         while ox + 7 < ow {
             let vx = _mm256_setr_ps(
-                ox as f32, (ox+1) as f32, (ox+2) as f32, (ox+3) as f32,
-                (ox+4) as f32, (ox+5) as f32, (ox+6) as f32, (ox+7) as f32,
+                ox as f32,
+                (ox + 1) as f32,
+                (ox + 2) as f32,
+                (ox + 3) as f32,
+                (ox + 4) as f32,
+                (ox + 5) as f32,
+                (ox + 6) as f32,
+                (ox + 7) as f32,
             );
 
             let zs = _mm256_fmadd_ps(_mm256_set1_ps(m02), vx, _mm256_set1_ps(base_z));
@@ -181,14 +239,12 @@ unsafe fn process_z_slice_f32(
                 let y0 = yi_arr[j];
                 let x0 = xi_arr[j];
 
-                if x0 >= 0 && x0 < w as i32
-                    && y0 >= 0 && y0 < h as i32
-                    && z0 >= 0 && z0 < d as i32
+                if x0 >= 0 && x0 < w as i32 && y0 >= 0 && y0 < h as i32 && z0 >= 0 && z0 < d as i32
                 {
                     let z0u = z0 as usize;
                     let y0u = y0 as usize;
                     let x0u = x0 as usize;
-                    
+
                     // Clamp +1 indices to handle boundary
                     let z1u = (z0u + 1).min(d - 1);
                     let y1u = (y0u + 1).min(h - 1);
@@ -212,10 +268,14 @@ unsafe fn process_z_slice_f32(
                     let v110 = input_slice[idx110];
                     let v111 = input_slice[idx111];
 
-                    result[j] = v000 * weights[0][j] + v001 * weights[1][j]
-                        + v010 * weights[2][j] + v011 * weights[3][j]
-                        + v100 * weights[4][j] + v101 * weights[5][j]
-                        + v110 * weights[6][j] + v111 * weights[7][j];
+                    result[j] = v000 * weights[0][j]
+                        + v001 * weights[1][j]
+                        + v010 * weights[2][j]
+                        + v011 * weights[3][j]
+                        + v100 * weights[4][j]
+                        + v101 * weights[5][j]
+                        + v110 * weights[6][j]
+                        + v111 * weights[7][j];
                 } else {
                     result[j] = cval_f32;
                 }
@@ -238,14 +298,11 @@ unsafe fn process_z_slice_f32(
             let y0 = y_src.floor() as i32;
             let x0 = x_src.floor() as i32;
 
-            if x0 >= 0 && x0 < w as i32
-                && y0 >= 0 && y0 < h as i32
-                && z0 >= 0 && z0 < d as i32
-            {
+            if x0 >= 0 && x0 < w as i32 && y0 >= 0 && y0 < h as i32 && z0 >= 0 && z0 < d as i32 {
                 let z0u = z0 as usize;
                 let y0u = y0 as usize;
                 let x0u = x0 as usize;
-                
+
                 // Clamp +1 indices to handle boundary
                 let z1u = (z0u + 1).min(d - 1);
                 let y1u = (y0u + 1).min(h - 1);
@@ -323,9 +380,15 @@ pub unsafe fn trilinear_3d_f16_avx2(
     let in_stride_y = w;
 
     let m = matrix.as_flat_f32();
-    let m00 = m[0]; let m01 = m[1]; let m02 = m[2];
-    let m10 = m[3]; let m11 = m[4]; let m12 = m[5];
-    let m20 = m[6]; let m21 = m[7]; let m22 = m[8];
+    let m00 = m[0];
+    let m01 = m[1];
+    let m02 = m[2];
+    let m10 = m[3];
+    let m11 = m[4];
+    let m12 = m[5];
+    let m20 = m[6];
+    let m21 = m[7];
+    let m22 = m[8];
 
     let shift_z = shift[0] as f32;
     let shift_y = shift[1] as f32;
@@ -341,10 +404,29 @@ pub unsafe fn trilinear_3d_f16_avx2(
             .enumerate()
             .for_each(|(oz, slice_z)| {
                 process_z_slice_f16(
-                    input_slice, slice_z, oz, oh, ow, d, h, w,
-                    in_stride_z, in_stride_y,
-                    m00, m01, m02, m10, m11, m12, m20, m21, m22,
-                    shift_z, shift_y, shift_x, cval_f16,
+                    input_slice,
+                    slice_z,
+                    oz,
+                    oh,
+                    ow,
+                    d,
+                    h,
+                    w,
+                    in_stride_z,
+                    in_stride_y,
+                    m00,
+                    m01,
+                    m02,
+                    m10,
+                    m11,
+                    m12,
+                    m20,
+                    m21,
+                    m22,
+                    shift_z,
+                    shift_y,
+                    shift_x,
+                    cval_f16,
                 );
             });
     }
@@ -353,10 +435,29 @@ pub unsafe fn trilinear_3d_f16_avx2(
     {
         for (oz, slice_z) in output_slice.chunks_mut(chunk_size).enumerate() {
             process_z_slice_f16(
-                input_slice, slice_z, oz, oh, ow, d, h, w,
-                in_stride_z, in_stride_y,
-                m00, m01, m02, m10, m11, m12, m20, m21, m22,
-                shift_z, shift_y, shift_x, cval_f16,
+                input_slice,
+                slice_z,
+                oz,
+                oh,
+                ow,
+                d,
+                h,
+                w,
+                in_stride_z,
+                in_stride_y,
+                m00,
+                m01,
+                m02,
+                m10,
+                m11,
+                m12,
+                m20,
+                m21,
+                m22,
+                shift_z,
+                shift_y,
+                shift_x,
+                cval_f16,
             );
         }
     }
@@ -375,10 +476,18 @@ unsafe fn process_z_slice_f16(
     w: usize,
     in_stride_z: usize,
     in_stride_y: usize,
-    m00: f32, m01: f32, m02: f32,
-    m10: f32, m11: f32, m12: f32,
-    m20: f32, m21: f32, m22: f32,
-    shift_z: f32, shift_y: f32, shift_x: f32,
+    m00: f32,
+    m01: f32,
+    m02: f32,
+    m10: f32,
+    m11: f32,
+    m12: f32,
+    m20: f32,
+    m21: f32,
+    m22: f32,
+    shift_z: f32,
+    shift_y: f32,
+    shift_x: f32,
     cval_f16: f16,
 ) {
     let one = _mm256_set1_ps(1.0);
@@ -396,8 +505,14 @@ unsafe fn process_z_slice_f16(
 
         while ox + 7 < ow {
             let vx = _mm256_setr_ps(
-                ox as f32, (ox+1) as f32, (ox+2) as f32, (ox+3) as f32,
-                (ox+4) as f32, (ox+5) as f32, (ox+6) as f32, (ox+7) as f32,
+                ox as f32,
+                (ox + 1) as f32,
+                (ox + 2) as f32,
+                (ox + 3) as f32,
+                (ox + 4) as f32,
+                (ox + 5) as f32,
+                (ox + 6) as f32,
+                (ox + 7) as f32,
             );
 
             let zs = _mm256_fmadd_ps(_mm256_set1_ps(m02), vx, _mm256_set1_ps(base_z));
@@ -454,14 +569,12 @@ unsafe fn process_z_slice_f16(
                 let y0 = yi_arr[j];
                 let x0 = xi_arr[j];
 
-                if x0 >= 0 && x0 < w as i32
-                    && y0 >= 0 && y0 < h as i32
-                    && z0 >= 0 && z0 < d as i32
+                if x0 >= 0 && x0 < w as i32 && y0 >= 0 && y0 < h as i32 && z0 >= 0 && z0 < d as i32
                 {
                     let z0u = z0 as usize;
                     let y0u = y0 as usize;
                     let x0u = x0 as usize;
-                    
+
                     // Clamp +1 indices to handle boundary
                     let z1u = (z0u + 1).min(d - 1);
                     let y1u = (y0u + 1).min(h - 1);
@@ -485,10 +598,14 @@ unsafe fn process_z_slice_f16(
                     let v110 = input_slice[idx110].to_f32();
                     let v111 = input_slice[idx111].to_f32();
 
-                    result[j] = v000 * weights[0][j] + v001 * weights[1][j]
-                        + v010 * weights[2][j] + v011 * weights[3][j]
-                        + v100 * weights[4][j] + v101 * weights[5][j]
-                        + v110 * weights[6][j] + v111 * weights[7][j];
+                    result[j] = v000 * weights[0][j]
+                        + v001 * weights[1][j]
+                        + v010 * weights[2][j]
+                        + v011 * weights[3][j]
+                        + v100 * weights[4][j]
+                        + v101 * weights[5][j]
+                        + v110 * weights[6][j]
+                        + v111 * weights[7][j];
                 } else {
                     result[j] = cval_f16.to_f32();
                 }
@@ -515,14 +632,11 @@ unsafe fn process_z_slice_f16(
             let y0 = y_src.floor() as i32;
             let x0 = x_src.floor() as i32;
 
-            if x0 >= 0 && x0 < w as i32
-                && y0 >= 0 && y0 < h as i32
-                && z0 >= 0 && z0 < d as i32
-            {
+            if x0 >= 0 && x0 < w as i32 && y0 >= 0 && y0 < h as i32 && z0 >= 0 && z0 < d as i32 {
                 let z0u = z0 as usize;
                 let y0u = y0 as usize;
                 let x0u = x0 as usize;
-                
+
                 // Clamp +1 indices to handle boundary
                 let z1u = (z0u + 1).min(d - 1);
                 let y1u = (y0u + 1).min(h - 1);
@@ -575,7 +689,7 @@ unsafe fn process_z_slice_f16(
 /// AVX2 optimized 3D trilinear interpolation for u8
 ///
 /// Converts u8→f32, interpolates, converts back to u8.
-/// 
+///
 /// # Performance
 /// - 2.2x faster than f32 due to 4x less memory traffic
 /// - 4x less memory consumption
@@ -605,9 +719,15 @@ pub unsafe fn trilinear_3d_u8_avx2(
     let in_stride_y = w;
 
     let m = matrix.as_flat_f32();
-    let m00 = m[0]; let m01 = m[1]; let m02 = m[2];
-    let m10 = m[3]; let m11 = m[4]; let m12 = m[5];
-    let m20 = m[6]; let m21 = m[7]; let m22 = m[8];
+    let m00 = m[0];
+    let m01 = m[1];
+    let m02 = m[2];
+    let m10 = m[3];
+    let m11 = m[4];
+    let m12 = m[5];
+    let m20 = m[6];
+    let m21 = m[7];
+    let m22 = m[8];
 
     let shift_z = shift[0] as f32;
     let shift_y = shift[1] as f32;
@@ -623,10 +743,29 @@ pub unsafe fn trilinear_3d_u8_avx2(
             .enumerate()
             .for_each(|(oz, slice_z)| {
                 process_z_slice_u8(
-                    input_slice, slice_z, oz, oh, ow, d, h, w,
-                    in_stride_z, in_stride_y,
-                    m00, m01, m02, m10, m11, m12, m20, m21, m22,
-                    shift_z, shift_y, shift_x, cval_f32,
+                    input_slice,
+                    slice_z,
+                    oz,
+                    oh,
+                    ow,
+                    d,
+                    h,
+                    w,
+                    in_stride_z,
+                    in_stride_y,
+                    m00,
+                    m01,
+                    m02,
+                    m10,
+                    m11,
+                    m12,
+                    m20,
+                    m21,
+                    m22,
+                    shift_z,
+                    shift_y,
+                    shift_x,
+                    cval_f32,
                 );
             });
     }
@@ -635,10 +774,29 @@ pub unsafe fn trilinear_3d_u8_avx2(
     {
         for (oz, slice_z) in output_slice.chunks_mut(chunk_size).enumerate() {
             process_z_slice_u8(
-                input_slice, slice_z, oz, oh, ow, d, h, w,
-                in_stride_z, in_stride_y,
-                m00, m01, m02, m10, m11, m12, m20, m21, m22,
-                shift_z, shift_y, shift_x, cval_f32,
+                input_slice,
+                slice_z,
+                oz,
+                oh,
+                ow,
+                d,
+                h,
+                w,
+                in_stride_z,
+                in_stride_y,
+                m00,
+                m01,
+                m02,
+                m10,
+                m11,
+                m12,
+                m20,
+                m21,
+                m22,
+                shift_z,
+                shift_y,
+                shift_x,
+                cval_f32,
             );
         }
     }
@@ -657,10 +815,18 @@ unsafe fn process_z_slice_u8(
     w: usize,
     in_stride_z: usize,
     in_stride_y: usize,
-    m00: f32, m01: f32, m02: f32,
-    m10: f32, m11: f32, m12: f32,
-    m20: f32, m21: f32, m22: f32,
-    shift_z: f32, shift_y: f32, shift_x: f32,
+    m00: f32,
+    m01: f32,
+    m02: f32,
+    m10: f32,
+    m11: f32,
+    m12: f32,
+    m20: f32,
+    m21: f32,
+    m22: f32,
+    shift_z: f32,
+    shift_y: f32,
+    shift_x: f32,
     cval_f32: f32,
 ) {
     let one = _mm256_set1_ps(1.0);
@@ -678,8 +844,14 @@ unsafe fn process_z_slice_u8(
 
         while ox + 7 < ow {
             let vx = _mm256_setr_ps(
-                ox as f32, (ox+1) as f32, (ox+2) as f32, (ox+3) as f32,
-                (ox+4) as f32, (ox+5) as f32, (ox+6) as f32, (ox+7) as f32,
+                ox as f32,
+                (ox + 1) as f32,
+                (ox + 2) as f32,
+                (ox + 3) as f32,
+                (ox + 4) as f32,
+                (ox + 5) as f32,
+                (ox + 6) as f32,
+                (ox + 7) as f32,
             );
 
             let zs = _mm256_fmadd_ps(_mm256_set1_ps(m02), vx, _mm256_set1_ps(base_z));
@@ -736,14 +908,12 @@ unsafe fn process_z_slice_u8(
                 let y0 = yi_arr[j];
                 let x0 = xi_arr[j];
 
-                if x0 >= 0 && x0 < w as i32
-                    && y0 >= 0 && y0 < h as i32
-                    && z0 >= 0 && z0 < d as i32
+                if x0 >= 0 && x0 < w as i32 && y0 >= 0 && y0 < h as i32 && z0 >= 0 && z0 < d as i32
                 {
                     let z0u = z0 as usize;
                     let y0u = y0 as usize;
                     let x0u = x0 as usize;
-                    
+
                     // Clamp +1 indices to handle boundary
                     let z1u = (z0u + 1).min(d - 1);
                     let y1u = (y0u + 1).min(h - 1);
@@ -767,10 +937,14 @@ unsafe fn process_z_slice_u8(
                     let v110 = input_slice[idx110] as f32;
                     let v111 = input_slice[idx111] as f32;
 
-                    result[j] = v000 * weights[0][j] + v001 * weights[1][j]
-                        + v010 * weights[2][j] + v011 * weights[3][j]
-                        + v100 * weights[4][j] + v101 * weights[5][j]
-                        + v110 * weights[6][j] + v111 * weights[7][j];
+                    result[j] = v000 * weights[0][j]
+                        + v001 * weights[1][j]
+                        + v010 * weights[2][j]
+                        + v011 * weights[3][j]
+                        + v100 * weights[4][j]
+                        + v101 * weights[5][j]
+                        + v110 * weights[6][j]
+                        + v111 * weights[7][j];
                 } else {
                     result[j] = cval_f32;
                 }
@@ -781,7 +955,11 @@ unsafe fn process_z_slice_u8(
             for j in 0..8 {
                 result_u8[j] = result[j].clamp(0.0, 255.0) as u8;
             }
-            std::ptr::copy_nonoverlapping(result_u8.as_ptr(), slice_z[row_start + ox..].as_mut_ptr(), 8);
+            std::ptr::copy_nonoverlapping(
+                result_u8.as_ptr(),
+                slice_z[row_start + ox..].as_mut_ptr(),
+                8,
+            );
 
             ox += 8;
         }
@@ -797,14 +975,11 @@ unsafe fn process_z_slice_u8(
             let y0 = y_src.floor() as i32;
             let x0 = x_src.floor() as i32;
 
-            if x0 >= 0 && x0 < w as i32
-                && y0 >= 0 && y0 < h as i32
-                && z0 >= 0 && z0 < d as i32
-            {
+            if x0 >= 0 && x0 < w as i32 && y0 >= 0 && y0 < h as i32 && z0 >= 0 && z0 < d as i32 {
                 let z0u = z0 as usize;
                 let y0u = y0 as usize;
                 let x0u = x0 as usize;
-                
+
                 // Clamp +1 indices to handle boundary
                 let z1u = (z0u + 1).min(d - 1);
                 let y1u = (y0u + 1).min(h - 1);
@@ -885,7 +1060,10 @@ mod tests {
 
     #[test]
     fn test_avx2_identity_f16() {
-        if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") || !is_x86_feature_detected!("f16c") {
+        if !is_x86_feature_detected!("avx2")
+            || !is_x86_feature_detected!("fma")
+            || !is_x86_feature_detected!("f16c")
+        {
             return;
         }
 
