@@ -181,20 +181,36 @@ unsafe fn process_z_slice_f32(
                 let y0 = yi_arr[j];
                 let x0 = xi_arr[j];
 
-                if x0 >= 0 && x0 < (w - 1) as i32
-                    && y0 >= 0 && y0 < (h - 1) as i32
-                    && z0 >= 0 && z0 < (d - 1) as i32
+                if x0 >= 0 && x0 < w as i32
+                    && y0 >= 0 && y0 < h as i32
+                    && z0 >= 0 && z0 < d as i32
                 {
-                    let idx000 = (z0 as usize) * in_stride_z + (y0 as usize) * in_stride_y + (x0 as usize);
+                    let z0u = z0 as usize;
+                    let y0u = y0 as usize;
+                    let x0u = x0 as usize;
+                    
+                    // Clamp +1 indices to handle boundary
+                    let z1u = (z0u + 1).min(d - 1);
+                    let y1u = (y0u + 1).min(h - 1);
+                    let x1u = (x0u + 1).min(w - 1);
+
+                    let idx000 = z0u * in_stride_z + y0u * in_stride_y + x0u;
+                    let idx001 = z0u * in_stride_z + y0u * in_stride_y + x1u;
+                    let idx010 = z0u * in_stride_z + y1u * in_stride_y + x0u;
+                    let idx011 = z0u * in_stride_z + y1u * in_stride_y + x1u;
+                    let idx100 = z1u * in_stride_z + y0u * in_stride_y + x0u;
+                    let idx101 = z1u * in_stride_z + y0u * in_stride_y + x1u;
+                    let idx110 = z1u * in_stride_z + y1u * in_stride_y + x0u;
+                    let idx111 = z1u * in_stride_z + y1u * in_stride_y + x1u;
 
                     let v000 = input_slice[idx000];
-                    let v001 = input_slice[idx000 + 1];
-                    let v010 = input_slice[idx000 + in_stride_y];
-                    let v011 = input_slice[idx000 + in_stride_y + 1];
-                    let v100 = input_slice[idx000 + in_stride_z];
-                    let v101 = input_slice[idx000 + in_stride_z + 1];
-                    let v110 = input_slice[idx000 + in_stride_z + in_stride_y];
-                    let v111 = input_slice[idx000 + in_stride_z + in_stride_y + 1];
+                    let v001 = input_slice[idx001];
+                    let v010 = input_slice[idx010];
+                    let v011 = input_slice[idx011];
+                    let v100 = input_slice[idx100];
+                    let v101 = input_slice[idx101];
+                    let v110 = input_slice[idx110];
+                    let v111 = input_slice[idx111];
 
                     result[j] = v000 * weights[0][j] + v001 * weights[1][j]
                         + v010 * weights[2][j] + v011 * weights[3][j]
@@ -222,24 +238,40 @@ unsafe fn process_z_slice_f32(
             let y0 = y_src.floor() as i32;
             let x0 = x_src.floor() as i32;
 
-            if x0 >= 0 && x0 < (w - 1) as i32
-                && y0 >= 0 && y0 < (h - 1) as i32
-                && z0 >= 0 && z0 < (d - 1) as i32
+            if x0 >= 0 && x0 < w as i32
+                && y0 >= 0 && y0 < h as i32
+                && z0 >= 0 && z0 < d as i32
             {
+                let z0u = z0 as usize;
+                let y0u = y0 as usize;
+                let x0u = x0 as usize;
+                
+                // Clamp +1 indices to handle boundary
+                let z1u = (z0u + 1).min(d - 1);
+                let y1u = (y0u + 1).min(h - 1);
+                let x1u = (x0u + 1).min(w - 1);
+
                 let fx = x_src - x_src.floor();
                 let fy = y_src - y_src.floor();
                 let fz = z_src - z_src.floor();
 
-                let idx000 = (z0 as usize) * in_stride_z + (y0 as usize) * in_stride_y + (x0 as usize);
+                let idx000 = z0u * in_stride_z + y0u * in_stride_y + x0u;
+                let idx001 = z0u * in_stride_z + y0u * in_stride_y + x1u;
+                let idx010 = z0u * in_stride_z + y1u * in_stride_y + x0u;
+                let idx011 = z0u * in_stride_z + y1u * in_stride_y + x1u;
+                let idx100 = z1u * in_stride_z + y0u * in_stride_y + x0u;
+                let idx101 = z1u * in_stride_z + y0u * in_stride_y + x1u;
+                let idx110 = z1u * in_stride_z + y1u * in_stride_y + x0u;
+                let idx111 = z1u * in_stride_z + y1u * in_stride_y + x1u;
 
                 let v000 = input_slice[idx000];
-                let v001 = input_slice[idx000 + 1];
-                let v010 = input_slice[idx000 + in_stride_y];
-                let v011 = input_slice[idx000 + in_stride_y + 1];
-                let v100 = input_slice[idx000 + in_stride_z];
-                let v101 = input_slice[idx000 + in_stride_z + 1];
-                let v110 = input_slice[idx000 + in_stride_z + in_stride_y];
-                let v111 = input_slice[idx000 + in_stride_z + in_stride_y + 1];
+                let v001 = input_slice[idx001];
+                let v010 = input_slice[idx010];
+                let v011 = input_slice[idx011];
+                let v100 = input_slice[idx100];
+                let v101 = input_slice[idx101];
+                let v110 = input_slice[idx110];
+                let v111 = input_slice[idx111];
 
                 slice_z[row_start + ox] = v000 * (1.0 - fx) * (1.0 - fy) * (1.0 - fz)
                     + v001 * fx * (1.0 - fy) * (1.0 - fz)
@@ -422,20 +454,36 @@ unsafe fn process_z_slice_f16(
                 let y0 = yi_arr[j];
                 let x0 = xi_arr[j];
 
-                if x0 >= 0 && x0 < (w - 1) as i32
-                    && y0 >= 0 && y0 < (h - 1) as i32
-                    && z0 >= 0 && z0 < (d - 1) as i32
+                if x0 >= 0 && x0 < w as i32
+                    && y0 >= 0 && y0 < h as i32
+                    && z0 >= 0 && z0 < d as i32
                 {
-                    let idx000 = (z0 as usize) * in_stride_z + (y0 as usize) * in_stride_y + (x0 as usize);
+                    let z0u = z0 as usize;
+                    let y0u = y0 as usize;
+                    let x0u = x0 as usize;
+                    
+                    // Clamp +1 indices to handle boundary
+                    let z1u = (z0u + 1).min(d - 1);
+                    let y1u = (y0u + 1).min(h - 1);
+                    let x1u = (x0u + 1).min(w - 1);
+
+                    let idx000 = z0u * in_stride_z + y0u * in_stride_y + x0u;
+                    let idx001 = z0u * in_stride_z + y0u * in_stride_y + x1u;
+                    let idx010 = z0u * in_stride_z + y1u * in_stride_y + x0u;
+                    let idx011 = z0u * in_stride_z + y1u * in_stride_y + x1u;
+                    let idx100 = z1u * in_stride_z + y0u * in_stride_y + x0u;
+                    let idx101 = z1u * in_stride_z + y0u * in_stride_y + x1u;
+                    let idx110 = z1u * in_stride_z + y1u * in_stride_y + x0u;
+                    let idx111 = z1u * in_stride_z + y1u * in_stride_y + x1u;
 
                     let v000 = input_slice[idx000].to_f32();
-                    let v001 = input_slice[idx000 + 1].to_f32();
-                    let v010 = input_slice[idx000 + in_stride_y].to_f32();
-                    let v011 = input_slice[idx000 + in_stride_y + 1].to_f32();
-                    let v100 = input_slice[idx000 + in_stride_z].to_f32();
-                    let v101 = input_slice[idx000 + in_stride_z + 1].to_f32();
-                    let v110 = input_slice[idx000 + in_stride_z + in_stride_y].to_f32();
-                    let v111 = input_slice[idx000 + in_stride_z + in_stride_y + 1].to_f32();
+                    let v001 = input_slice[idx001].to_f32();
+                    let v010 = input_slice[idx010].to_f32();
+                    let v011 = input_slice[idx011].to_f32();
+                    let v100 = input_slice[idx100].to_f32();
+                    let v101 = input_slice[idx101].to_f32();
+                    let v110 = input_slice[idx110].to_f32();
+                    let v111 = input_slice[idx111].to_f32();
 
                     result[j] = v000 * weights[0][j] + v001 * weights[1][j]
                         + v010 * weights[2][j] + v011 * weights[3][j]
@@ -467,24 +515,40 @@ unsafe fn process_z_slice_f16(
             let y0 = y_src.floor() as i32;
             let x0 = x_src.floor() as i32;
 
-            if x0 >= 0 && x0 < (w - 1) as i32
-                && y0 >= 0 && y0 < (h - 1) as i32
-                && z0 >= 0 && z0 < (d - 1) as i32
+            if x0 >= 0 && x0 < w as i32
+                && y0 >= 0 && y0 < h as i32
+                && z0 >= 0 && z0 < d as i32
             {
+                let z0u = z0 as usize;
+                let y0u = y0 as usize;
+                let x0u = x0 as usize;
+                
+                // Clamp +1 indices to handle boundary
+                let z1u = (z0u + 1).min(d - 1);
+                let y1u = (y0u + 1).min(h - 1);
+                let x1u = (x0u + 1).min(w - 1);
+
                 let fx = x_src - x_src.floor();
                 let fy = y_src - y_src.floor();
                 let fz = z_src - z_src.floor();
 
-                let idx000 = (z0 as usize) * in_stride_z + (y0 as usize) * in_stride_y + (x0 as usize);
+                let idx000 = z0u * in_stride_z + y0u * in_stride_y + x0u;
+                let idx001 = z0u * in_stride_z + y0u * in_stride_y + x1u;
+                let idx010 = z0u * in_stride_z + y1u * in_stride_y + x0u;
+                let idx011 = z0u * in_stride_z + y1u * in_stride_y + x1u;
+                let idx100 = z1u * in_stride_z + y0u * in_stride_y + x0u;
+                let idx101 = z1u * in_stride_z + y0u * in_stride_y + x1u;
+                let idx110 = z1u * in_stride_z + y1u * in_stride_y + x0u;
+                let idx111 = z1u * in_stride_z + y1u * in_stride_y + x1u;
 
                 let v000 = input_slice[idx000].to_f32();
-                let v001 = input_slice[idx000 + 1].to_f32();
-                let v010 = input_slice[idx000 + in_stride_y].to_f32();
-                let v011 = input_slice[idx000 + in_stride_y + 1].to_f32();
-                let v100 = input_slice[idx000 + in_stride_z].to_f32();
-                let v101 = input_slice[idx000 + in_stride_z + 1].to_f32();
-                let v110 = input_slice[idx000 + in_stride_z + in_stride_y].to_f32();
-                let v111 = input_slice[idx000 + in_stride_z + in_stride_y + 1].to_f32();
+                let v001 = input_slice[idx001].to_f32();
+                let v010 = input_slice[idx010].to_f32();
+                let v011 = input_slice[idx011].to_f32();
+                let v100 = input_slice[idx100].to_f32();
+                let v101 = input_slice[idx101].to_f32();
+                let v110 = input_slice[idx110].to_f32();
+                let v111 = input_slice[idx111].to_f32();
 
                 let result_f32 = v000 * (1.0 - fx) * (1.0 - fy) * (1.0 - fz)
                     + v001 * fx * (1.0 - fy) * (1.0 - fz)
@@ -672,20 +736,36 @@ unsafe fn process_z_slice_u8(
                 let y0 = yi_arr[j];
                 let x0 = xi_arr[j];
 
-                if x0 >= 0 && x0 < (w - 1) as i32
-                    && y0 >= 0 && y0 < (h - 1) as i32
-                    && z0 >= 0 && z0 < (d - 1) as i32
+                if x0 >= 0 && x0 < w as i32
+                    && y0 >= 0 && y0 < h as i32
+                    && z0 >= 0 && z0 < d as i32
                 {
-                    let idx000 = (z0 as usize) * in_stride_z + (y0 as usize) * in_stride_y + (x0 as usize);
+                    let z0u = z0 as usize;
+                    let y0u = y0 as usize;
+                    let x0u = x0 as usize;
+                    
+                    // Clamp +1 indices to handle boundary
+                    let z1u = (z0u + 1).min(d - 1);
+                    let y1u = (y0u + 1).min(h - 1);
+                    let x1u = (x0u + 1).min(w - 1);
+
+                    let idx000 = z0u * in_stride_z + y0u * in_stride_y + x0u;
+                    let idx001 = z0u * in_stride_z + y0u * in_stride_y + x1u;
+                    let idx010 = z0u * in_stride_z + y1u * in_stride_y + x0u;
+                    let idx011 = z0u * in_stride_z + y1u * in_stride_y + x1u;
+                    let idx100 = z1u * in_stride_z + y0u * in_stride_y + x0u;
+                    let idx101 = z1u * in_stride_z + y0u * in_stride_y + x1u;
+                    let idx110 = z1u * in_stride_z + y1u * in_stride_y + x0u;
+                    let idx111 = z1u * in_stride_z + y1u * in_stride_y + x1u;
 
                     let v000 = input_slice[idx000] as f32;
-                    let v001 = input_slice[idx000 + 1] as f32;
-                    let v010 = input_slice[idx000 + in_stride_y] as f32;
-                    let v011 = input_slice[idx000 + in_stride_y + 1] as f32;
-                    let v100 = input_slice[idx000 + in_stride_z] as f32;
-                    let v101 = input_slice[idx000 + in_stride_z + 1] as f32;
-                    let v110 = input_slice[idx000 + in_stride_z + in_stride_y] as f32;
-                    let v111 = input_slice[idx000 + in_stride_z + in_stride_y + 1] as f32;
+                    let v001 = input_slice[idx001] as f32;
+                    let v010 = input_slice[idx010] as f32;
+                    let v011 = input_slice[idx011] as f32;
+                    let v100 = input_slice[idx100] as f32;
+                    let v101 = input_slice[idx101] as f32;
+                    let v110 = input_slice[idx110] as f32;
+                    let v111 = input_slice[idx111] as f32;
 
                     result[j] = v000 * weights[0][j] + v001 * weights[1][j]
                         + v010 * weights[2][j] + v011 * weights[3][j]
@@ -717,24 +797,40 @@ unsafe fn process_z_slice_u8(
             let y0 = y_src.floor() as i32;
             let x0 = x_src.floor() as i32;
 
-            if x0 >= 0 && x0 < (w - 1) as i32
-                && y0 >= 0 && y0 < (h - 1) as i32
-                && z0 >= 0 && z0 < (d - 1) as i32
+            if x0 >= 0 && x0 < w as i32
+                && y0 >= 0 && y0 < h as i32
+                && z0 >= 0 && z0 < d as i32
             {
+                let z0u = z0 as usize;
+                let y0u = y0 as usize;
+                let x0u = x0 as usize;
+                
+                // Clamp +1 indices to handle boundary
+                let z1u = (z0u + 1).min(d - 1);
+                let y1u = (y0u + 1).min(h - 1);
+                let x1u = (x0u + 1).min(w - 1);
+
                 let fx = x_src - x_src.floor();
                 let fy = y_src - y_src.floor();
                 let fz = z_src - z_src.floor();
 
-                let idx000 = (z0 as usize) * in_stride_z + (y0 as usize) * in_stride_y + (x0 as usize);
+                let idx000 = z0u * in_stride_z + y0u * in_stride_y + x0u;
+                let idx001 = z0u * in_stride_z + y0u * in_stride_y + x1u;
+                let idx010 = z0u * in_stride_z + y1u * in_stride_y + x0u;
+                let idx011 = z0u * in_stride_z + y1u * in_stride_y + x1u;
+                let idx100 = z1u * in_stride_z + y0u * in_stride_y + x0u;
+                let idx101 = z1u * in_stride_z + y0u * in_stride_y + x1u;
+                let idx110 = z1u * in_stride_z + y1u * in_stride_y + x0u;
+                let idx111 = z1u * in_stride_z + y1u * in_stride_y + x1u;
 
                 let v000 = input_slice[idx000] as f32;
-                let v001 = input_slice[idx000 + 1] as f32;
-                let v010 = input_slice[idx000 + in_stride_y] as f32;
-                let v011 = input_slice[idx000 + in_stride_y + 1] as f32;
-                let v100 = input_slice[idx000 + in_stride_z] as f32;
-                let v101 = input_slice[idx000 + in_stride_z + 1] as f32;
-                let v110 = input_slice[idx000 + in_stride_z + in_stride_y] as f32;
-                let v111 = input_slice[idx000 + in_stride_z + in_stride_y + 1] as f32;
+                let v001 = input_slice[idx001] as f32;
+                let v010 = input_slice[idx010] as f32;
+                let v011 = input_slice[idx011] as f32;
+                let v100 = input_slice[idx100] as f32;
+                let v101 = input_slice[idx101] as f32;
+                let v110 = input_slice[idx110] as f32;
+                let v111 = input_slice[idx111] as f32;
 
                 let result_f32 = v000 * (1.0 - fx) * (1.0 - fy) * (1.0 - fz)
                     + v001 * fx * (1.0 - fy) * (1.0 - fz)

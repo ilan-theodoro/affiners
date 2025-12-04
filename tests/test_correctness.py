@@ -5,9 +5,6 @@ Test hierarchy:
 1. f32 == scipy.ndimage.affine_transform (ground truth)
 2. f16 ≈ f32 (within tolerance)
 3. u8 ≈ f32 (within tolerance)
-
-Note: Boundary voxels may differ due to implementation details,
-so we test interior voxels with a margin.
 """
 
 import numpy as np
