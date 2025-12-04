@@ -21,39 +21,6 @@ Benchmark on AMD Ryzen 9 9950X (32 threads):
 | 512³ | 890 ms | 89 ms | 40 ms | **10x** | **22x** |
 | 1024³ | 7.1 s | 710 ms | 320 ms | **10x** | **22x** |
 
-### Benchmark Code
-
-```python
-import numpy as np
-from scipy import ndimage
-import affiners
-import time
-
-# Setup
-size = 1024  # or 512
-input_f32 = np.random.rand(size, size, size).astype(np.float32)
-input_u8 = np.random.randint(0, 256, (size, size, size), dtype=np.uint8)
-matrix = np.array([[1.0, 0.1, 0.01], [0.0, 1.0, 0.0], [0.0, -0.02, 1.0]])
-offset = np.array([-10.0, -5.0, 8.0])
-
-# Scipy
-start = time.perf_counter()
-result_scipy = ndimage.affine_transform(input_f32, matrix, offset=offset, order=1)
-print(f"scipy: {(time.perf_counter() - start)*1000:.0f} ms")
-
-# affiners f32
-start = time.perf_counter()
-result_f32 = affiners.affine_transform(input_f32, matrix, offset=offset)
-print(f"affiners f32: {(time.perf_counter() - start)*1000:.0f} ms")
-
-# affiners u8
-start = time.perf_counter()
-result_u8 = affiners.affine_transform_u8(input_u8, matrix, offset=offset)
-print(f"affiners u8: {(time.perf_counter() - start)*1000:.0f} ms")
-```
-
-**Note**: Results match `scipy.ndimage.affine_transform` exactly for f32 (validated in CI).
-
 ## Installation
 
 ```bash
