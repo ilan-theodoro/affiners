@@ -1,4 +1,4 @@
-name: Release
+name: release
 
 on:
   push:
@@ -77,7 +77,7 @@ jobs:
 
   # Release and publish
   release:
-    name: Release
+    name: release
     needs: [build, sdist]
     runs-on: ubuntu-latest
     environment:
@@ -119,3 +119,4 @@ jobs:
           echo "🔍 Dry run complete - artifacts built but not published"
           echo "Built artifacts:"
           ls -la dist/
+
