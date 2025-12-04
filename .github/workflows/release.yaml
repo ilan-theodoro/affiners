@@ -43,6 +43,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Clean dist
+        run: rm -rf dist && mkdir dist
+
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -62,6 +65,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Clean dist
+        run: rm -rf dist && mkdir dist
 
       - name: Build sdist
         uses: PyO3/maturin-action@v1
