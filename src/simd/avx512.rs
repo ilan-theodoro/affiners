@@ -48,9 +48,15 @@ pub unsafe fn trilinear_3d_f32_avx512(
     let in_stride_y = w;
 
     let m = matrix.as_flat_f32();
-    let m00 = m[0]; let m01 = m[1]; let m02 = m[2];
-    let m10 = m[3]; let m11 = m[4]; let m12 = m[5];
-    let m20 = m[6]; let m21 = m[7]; let m22 = m[8];
+    let m00 = m[0];
+    let m01 = m[1];
+    let m02 = m[2];
+    let m10 = m[3];
+    let m11 = m[4];
+    let m12 = m[5];
+    let m20 = m[6];
+    let m21 = m[7];
+    let m22 = m[8];
 
     let shift_z = shift[0] as f32;
     let shift_y = shift[1] as f32;
@@ -66,10 +72,29 @@ pub unsafe fn trilinear_3d_f32_avx512(
             .enumerate()
             .for_each(|(oz, slice_z)| {
                 process_z_slice_f32_avx512(
-                    input_slice, slice_z, oz, oh, ow, d, h, w,
-                    in_stride_z, in_stride_y,
-                    m00, m01, m02, m10, m11, m12, m20, m21, m22,
-                    shift_z, shift_y, shift_x, cval_f32,
+                    input_slice,
+                    slice_z,
+                    oz,
+                    oh,
+                    ow,
+                    d,
+                    h,
+                    w,
+                    in_stride_z,
+                    in_stride_y,
+                    m00,
+                    m01,
+                    m02,
+                    m10,
+                    m11,
+                    m12,
+                    m20,
+                    m21,
+                    m22,
+                    shift_z,
+                    shift_y,
+                    shift_x,
+                    cval_f32,
                 );
             });
     }
@@ -78,10 +103,29 @@ pub unsafe fn trilinear_3d_f32_avx512(
     {
         for (oz, slice_z) in output_slice.chunks_mut(chunk_size).enumerate() {
             process_z_slice_f32_avx512(
-                input_slice, slice_z, oz, oh, ow, d, h, w,
-                in_stride_z, in_stride_y,
-                m00, m01, m02, m10, m11, m12, m20, m21, m22,
-                shift_z, shift_y, shift_x, cval_f32,
+                input_slice,
+                slice_z,
+                oz,
+                oh,
+                ow,
+                d,
+                h,
+                w,
+                in_stride_z,
+                in_stride_y,
+                m00,
+                m01,
+                m02,
+                m10,
+                m11,
+                m12,
+                m20,
+                m21,
+                m22,
+                shift_z,
+                shift_y,
+                shift_x,
+                cval_f32,
             );
         }
     }
@@ -100,10 +144,18 @@ unsafe fn process_z_slice_f32_avx512(
     w: usize,
     in_stride_z: usize,
     in_stride_y: usize,
-    m00: f32, m01: f32, m02: f32,
-    m10: f32, m11: f32, m12: f32,
-    m20: f32, m21: f32, m22: f32,
-    shift_z: f32, shift_y: f32, shift_x: f32,
+    m00: f32,
+    m01: f32,
+    m02: f32,
+    m10: f32,
+    m11: f32,
+    m12: f32,
+    m20: f32,
+    m21: f32,
+    m22: f32,
+    shift_z: f32,
+    shift_y: f32,
+    shift_x: f32,
     cval_f32: f32,
 ) {
     let one = _mm512_set1_ps(1.0);
@@ -122,10 +174,22 @@ unsafe fn process_z_slice_f32_avx512(
         // AVX512 loop - process 16 voxels at a time
         while ox + 15 < ow {
             let vx = _mm512_setr_ps(
-                ox as f32, (ox+1) as f32, (ox+2) as f32, (ox+3) as f32,
-                (ox+4) as f32, (ox+5) as f32, (ox+6) as f32, (ox+7) as f32,
-                (ox+8) as f32, (ox+9) as f32, (ox+10) as f32, (ox+11) as f32,
-                (ox+12) as f32, (ox+13) as f32, (ox+14) as f32, (ox+15) as f32,
+                ox as f32,
+                (ox + 1) as f32,
+                (ox + 2) as f32,
+                (ox + 3) as f32,
+                (ox + 4) as f32,
+                (ox + 5) as f32,
+                (ox + 6) as f32,
+                (ox + 7) as f32,
+                (ox + 8) as f32,
+                (ox + 9) as f32,
+                (ox + 10) as f32,
+                (ox + 11) as f32,
+                (ox + 12) as f32,
+                (ox + 13) as f32,
+                (ox + 14) as f32,
+                (ox + 15) as f32,
             );
 
             let zs = _mm512_fmadd_ps(_mm512_set1_ps(m02), vx, _mm512_set1_ps(base_z));
@@ -182,14 +246,12 @@ unsafe fn process_z_slice_f32_avx512(
                 let y0 = yi_arr[j];
                 let x0 = xi_arr[j];
 
-                if x0 >= 0 && x0 < w as i32
-                    && y0 >= 0 && y0 < h as i32
-                    && z0 >= 0 && z0 < d as i32
+                if x0 >= 0 && x0 < w as i32 && y0 >= 0 && y0 < h as i32 && z0 >= 0 && z0 < d as i32
                 {
                     let z0u = z0 as usize;
                     let y0u = y0 as usize;
                     let x0u = x0 as usize;
-                    
+
                     // Clamp +1 indices to handle boundary
                     let z1u = (z0u + 1).min(d - 1);
                     let y1u = (y0u + 1).min(h - 1);
@@ -213,10 +275,14 @@ unsafe fn process_z_slice_f32_avx512(
                     let v110 = input_slice[idx110];
                     let v111 = input_slice[idx111];
 
-                    result[j] = v000 * weights[0][j] + v001 * weights[1][j]
-                        + v010 * weights[2][j] + v011 * weights[3][j]
-                        + v100 * weights[4][j] + v101 * weights[5][j]
-                        + v110 * weights[6][j] + v111 * weights[7][j];
+                    result[j] = v000 * weights[0][j]
+                        + v001 * weights[1][j]
+                        + v010 * weights[2][j]
+                        + v011 * weights[3][j]
+                        + v100 * weights[4][j]
+                        + v101 * weights[5][j]
+                        + v110 * weights[6][j]
+                        + v111 * weights[7][j];
                 } else {
                     result[j] = cval_f32;
                 }
@@ -239,14 +305,11 @@ unsafe fn process_z_slice_f32_avx512(
             let y0 = y_src.floor() as i32;
             let x0 = x_src.floor() as i32;
 
-            if x0 >= 0 && x0 < w as i32
-                && y0 >= 0 && y0 < h as i32
-                && z0 >= 0 && z0 < d as i32
-            {
+            if x0 >= 0 && x0 < w as i32 && y0 >= 0 && y0 < h as i32 && z0 >= 0 && z0 < d as i32 {
                 let z0u = z0 as usize;
                 let y0u = y0 as usize;
                 let x0u = x0 as usize;
-                
+
                 // Clamp +1 indices to handle boundary
                 let z1u = (z0u + 1).min(d - 1);
                 let y1u = (y0u + 1).min(h - 1);
@@ -324,9 +387,15 @@ pub unsafe fn trilinear_3d_f16_avx512(
     let in_stride_y = w;
 
     let m = matrix.as_flat_f32();
-    let m00 = m[0]; let m01 = m[1]; let m02 = m[2];
-    let m10 = m[3]; let m11 = m[4]; let m12 = m[5];
-    let m20 = m[6]; let m21 = m[7]; let m22 = m[8];
+    let m00 = m[0];
+    let m01 = m[1];
+    let m02 = m[2];
+    let m10 = m[3];
+    let m11 = m[4];
+    let m12 = m[5];
+    let m20 = m[6];
+    let m21 = m[7];
+    let m22 = m[8];
 
     let shift_z = shift[0] as f32;
     let shift_y = shift[1] as f32;
@@ -342,10 +411,29 @@ pub unsafe fn trilinear_3d_f16_avx512(
             .enumerate()
             .for_each(|(oz, slice_z)| {
                 process_z_slice_f16_avx512(
-                    input_slice, slice_z, oz, oh, ow, d, h, w,
-                    in_stride_z, in_stride_y,
-                    m00, m01, m02, m10, m11, m12, m20, m21, m22,
-                    shift_z, shift_y, shift_x, cval_f16,
+                    input_slice,
+                    slice_z,
+                    oz,
+                    oh,
+                    ow,
+                    d,
+                    h,
+                    w,
+                    in_stride_z,
+                    in_stride_y,
+                    m00,
+                    m01,
+                    m02,
+                    m10,
+                    m11,
+                    m12,
+                    m20,
+                    m21,
+                    m22,
+                    shift_z,
+                    shift_y,
+                    shift_x,
+                    cval_f16,
                 );
             });
     }
@@ -354,10 +442,29 @@ pub unsafe fn trilinear_3d_f16_avx512(
     {
         for (oz, slice_z) in output_slice.chunks_mut(chunk_size).enumerate() {
             process_z_slice_f16_avx512(
-                input_slice, slice_z, oz, oh, ow, d, h, w,
-                in_stride_z, in_stride_y,
-                m00, m01, m02, m10, m11, m12, m20, m21, m22,
-                shift_z, shift_y, shift_x, cval_f16,
+                input_slice,
+                slice_z,
+                oz,
+                oh,
+                ow,
+                d,
+                h,
+                w,
+                in_stride_z,
+                in_stride_y,
+                m00,
+                m01,
+                m02,
+                m10,
+                m11,
+                m12,
+                m20,
+                m21,
+                m22,
+                shift_z,
+                shift_y,
+                shift_x,
+                cval_f16,
             );
         }
     }
@@ -376,10 +483,18 @@ unsafe fn process_z_slice_f16_avx512(
     w: usize,
     in_stride_z: usize,
     in_stride_y: usize,
-    m00: f32, m01: f32, m02: f32,
-    m10: f32, m11: f32, m12: f32,
-    m20: f32, m21: f32, m22: f32,
-    shift_z: f32, shift_y: f32, shift_x: f32,
+    m00: f32,
+    m01: f32,
+    m02: f32,
+    m10: f32,
+    m11: f32,
+    m12: f32,
+    m20: f32,
+    m21: f32,
+    m22: f32,
+    shift_z: f32,
+    shift_y: f32,
+    shift_x: f32,
     cval_f16: f16,
 ) {
     let one = _mm512_set1_ps(1.0);
@@ -397,10 +512,22 @@ unsafe fn process_z_slice_f16_avx512(
 
         while ox + 15 < ow {
             let vx = _mm512_setr_ps(
-                ox as f32, (ox+1) as f32, (ox+2) as f32, (ox+3) as f32,
-                (ox+4) as f32, (ox+5) as f32, (ox+6) as f32, (ox+7) as f32,
-                (ox+8) as f32, (ox+9) as f32, (ox+10) as f32, (ox+11) as f32,
-                (ox+12) as f32, (ox+13) as f32, (ox+14) as f32, (ox+15) as f32,
+                ox as f32,
+                (ox + 1) as f32,
+                (ox + 2) as f32,
+                (ox + 3) as f32,
+                (ox + 4) as f32,
+                (ox + 5) as f32,
+                (ox + 6) as f32,
+                (ox + 7) as f32,
+                (ox + 8) as f32,
+                (ox + 9) as f32,
+                (ox + 10) as f32,
+                (ox + 11) as f32,
+                (ox + 12) as f32,
+                (ox + 13) as f32,
+                (ox + 14) as f32,
+                (ox + 15) as f32,
             );
 
             let zs = _mm512_fmadd_ps(_mm512_set1_ps(m02), vx, _mm512_set1_ps(base_z));
@@ -457,14 +584,12 @@ unsafe fn process_z_slice_f16_avx512(
                 let y0 = yi_arr[j];
                 let x0 = xi_arr[j];
 
-                if x0 >= 0 && x0 < w as i32
-                    && y0 >= 0 && y0 < h as i32
-                    && z0 >= 0 && z0 < d as i32
+                if x0 >= 0 && x0 < w as i32 && y0 >= 0 && y0 < h as i32 && z0 >= 0 && z0 < d as i32
                 {
                     let z0u = z0 as usize;
                     let y0u = y0 as usize;
                     let x0u = x0 as usize;
-                    
+
                     // Clamp +1 indices to handle boundary
                     let z1u = (z0u + 1).min(d - 1);
                     let y1u = (y0u + 1).min(h - 1);
@@ -488,10 +613,14 @@ unsafe fn process_z_slice_f16_avx512(
                     let v110 = input_slice[idx110].to_f32();
                     let v111 = input_slice[idx111].to_f32();
 
-                    result[j] = v000 * weights[0][j] + v001 * weights[1][j]
-                        + v010 * weights[2][j] + v011 * weights[3][j]
-                        + v100 * weights[4][j] + v101 * weights[5][j]
-                        + v110 * weights[6][j] + v111 * weights[7][j];
+                    result[j] = v000 * weights[0][j]
+                        + v001 * weights[1][j]
+                        + v010 * weights[2][j]
+                        + v011 * weights[3][j]
+                        + v100 * weights[4][j]
+                        + v101 * weights[5][j]
+                        + v110 * weights[6][j]
+                        + v111 * weights[7][j];
                 } else {
                     result[j] = cval_f16.to_f32();
                 }
@@ -518,14 +647,11 @@ unsafe fn process_z_slice_f16_avx512(
             let y0 = y_src.floor() as i32;
             let x0 = x_src.floor() as i32;
 
-            if x0 >= 0 && x0 < w as i32
-                && y0 >= 0 && y0 < h as i32
-                && z0 >= 0 && z0 < d as i32
-            {
+            if x0 >= 0 && x0 < w as i32 && y0 >= 0 && y0 < h as i32 && z0 >= 0 && z0 < d as i32 {
                 let z0u = z0 as usize;
                 let y0u = y0 as usize;
                 let x0u = x0 as usize;
-                
+
                 // Clamp +1 indices to handle boundary
                 let z1u = (z0u + 1).min(d - 1);
                 let y1u = (y0u + 1).min(h - 1);

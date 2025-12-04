@@ -6,7 +6,9 @@ use numpy::{IntoPyArray, PyArray3, PyReadonlyArray2, PyReadonlyArray3, PyUntyped
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-use crate::{affine_transform_3d_f16, affine_transform_3d_f32, affine_transform_3d_u8, AffineMatrix3D};
+use crate::{
+    AffineMatrix3D, affine_transform_3d_f16, affine_transform_3d_f32, affine_transform_3d_u8,
+};
 
 // =============================================================================
 // Build Info
@@ -24,13 +26,13 @@ use crate::{affine_transform_3d_f16, affine_transform_3d_f32, affine_transform_3
 #[pyfunction]
 fn build_info(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
     let info = PyDict::new(py);
-    
+
     // Version
     info.set_item("version", env!("CARGO_PKG_VERSION"))?;
-    
+
     // SIMD features (runtime detection)
     let simd = PyDict::new(py);
-    
+
     #[cfg(target_arch = "x86_64")]
     {
         simd.set_item("avx2", is_x86_feature_detected!("avx2"))?;
@@ -38,7 +40,7 @@ fn build_info(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         simd.set_item("fma", is_x86_feature_detected!("fma"))?;
         simd.set_item("f16c", is_x86_feature_detected!("f16c"))?;
     }
-    
+
     #[cfg(not(target_arch = "x86_64"))]
     {
         simd.set_item("avx2", false)?;
@@ -46,15 +48,15 @@ fn build_info(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         simd.set_item("fma", false)?;
         simd.set_item("f16c", false)?;
     }
-    
+
     info.set_item("simd", simd)?;
-    
+
     // Parallel feature
     #[cfg(feature = "parallel")]
     info.set_item("parallel", true)?;
     #[cfg(not(feature = "parallel"))]
     info.set_item("parallel", false)?;
-    
+
     // Determine which backend will be used
     #[cfg(target_arch = "x86_64")]
     {
@@ -67,17 +69,20 @@ fn build_info(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
             "scalar"
         };
         info.set_item("backend_f32", backend_f32)?;
-        
+
         // f16 backend
         let backend_f16 = if is_x86_feature_detected!("avx512f") {
             "avx512"
-        } else if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") && is_x86_feature_detected!("f16c") {
+        } else if is_x86_feature_detected!("avx2")
+            && is_x86_feature_detected!("fma")
+            && is_x86_feature_detected!("f16c")
+        {
             "avx2"
         } else {
             "scalar"
         };
         info.set_item("backend_f16", backend_f16)?;
-        
+
         // u8 backend
         let backend_u8 = if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
             "avx2"
@@ -86,14 +91,14 @@ fn build_info(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         };
         info.set_item("backend_u8", backend_u8)?;
     }
-    
+
     #[cfg(not(target_arch = "x86_64"))]
     {
         info.set_item("backend_f32", "scalar")?;
         info.set_item("backend_f16", "scalar")?;
         info.set_item("backend_u8", "scalar")?;
     }
-    
+
     // Number of threads (if parallel)
     #[cfg(feature = "parallel")]
     {
@@ -103,7 +108,7 @@ fn build_info(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
     {
         info.set_item("num_threads", 1)?;
     }
-    
+
     Ok(info)
 }
 
@@ -140,7 +145,9 @@ fn affine_transform<'py>(
 
     let matrix_slice = matrix.as_slice()?;
     if matrix_slice.len() != 9 {
-        return Err(pyo3::exceptions::PyValueError::new_err("Matrix must be 3x3"));
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "Matrix must be 3x3",
+        ));
     }
 
     let affine_matrix = AffineMatrix3D::new([
@@ -151,7 +158,11 @@ fn affine_transform<'py>(
 
     let shift = match offset {
         Some(v) if v.len() == 3 => [v[0], v[1], v[2]],
-        Some(_) => return Err(pyo3::exceptions::PyValueError::new_err("Offset must have 3 elements")),
+        Some(_) => {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "Offset must have 3 elements",
+            ));
+        }
         None => [0.0, 0.0, 0.0],
     };
 
@@ -172,7 +183,7 @@ fn affine_transform<'py>(
 #[pyo3(signature = (input, matrix, offset=None, cval=0.0, order=1))]
 fn affine_transform_f16<'py>(
     py: Python<'py>,
-    input: PyReadonlyArray3<'py, u16>,  // numpy float16 stored as u16
+    input: PyReadonlyArray3<'py, u16>, // numpy float16 stored as u16
     matrix: PyReadonlyArray2<'py, f64>,
     offset: Option<Vec<f64>>,
     cval: f64,
@@ -186,7 +197,9 @@ fn affine_transform_f16<'py>(
 
     let matrix_slice = matrix.as_slice()?;
     if matrix_slice.len() != 9 {
-        return Err(pyo3::exceptions::PyValueError::new_err("Matrix must be 3x3"));
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "Matrix must be 3x3",
+        ));
     }
 
     let affine_matrix = AffineMatrix3D::new([
@@ -197,7 +210,11 @@ fn affine_transform_f16<'py>(
 
     let shift = match offset {
         Some(v) if v.len() == 3 => [v[0], v[1], v[2]],
-        Some(_) => return Err(pyo3::exceptions::PyValueError::new_err("Offset must have 3 elements")),
+        Some(_) => {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "Offset must have 3 elements",
+            ));
+        }
         None => [0.0, 0.0, 0.0],
     };
 
@@ -253,7 +270,9 @@ fn affine_transform_u8<'py>(
 ) -> PyResult<Bound<'py, PyArray3<u8>>> {
     let matrix_slice = matrix.as_slice()?;
     if matrix_slice.len() != 9 {
-        return Err(pyo3::exceptions::PyValueError::new_err("Matrix must be 3x3"));
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "Matrix must be 3x3",
+        ));
     }
 
     let affine_matrix = AffineMatrix3D::new([
@@ -264,7 +283,11 @@ fn affine_transform_u8<'py>(
 
     let shift = match offset {
         Some(v) if v.len() == 3 => [v[0], v[1], v[2]],
-        Some(_) => return Err(pyo3::exceptions::PyValueError::new_err("Offset must have 3 elements")),
+        Some(_) => {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "Offset must have 3 elements",
+            ));
+        }
         None => [0.0, 0.0, 0.0],
     };
 

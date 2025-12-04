@@ -1,3 +1,6 @@
+// Allow unsafe operations in unsafe functions (Rust 2024 lint)
+#![allow(unsafe_op_in_unsafe_fn)]
+
 //! Fast 3D trilinear interpolation using AVX2/AVX512 SIMD instructions
 //!
 //! This crate provides high-performance 3D interpolation functions optimized
@@ -10,7 +13,7 @@
 //!
 //! ```rust
 //! use ndarray::Array3;
-//! use interp3d_avx2::{affine_transform_3d_f32, AffineMatrix3D};
+//! use affiners::{affine_transform_3d_f32, AffineMatrix3D};
 //!
 //! let input = Array3::<f32>::zeros((100, 100, 100));
 //! let matrix = AffineMatrix3D::identity();
@@ -88,18 +91,30 @@ impl AffineMatrix3D {
     #[inline]
     pub fn as_flat(&self) -> [f64; 9] {
         [
-            self.m[0][0], self.m[0][1], self.m[0][2],
-            self.m[1][0], self.m[1][1], self.m[1][2],
-            self.m[2][0], self.m[2][1], self.m[2][2],
+            self.m[0][0],
+            self.m[0][1],
+            self.m[0][2],
+            self.m[1][0],
+            self.m[1][1],
+            self.m[1][2],
+            self.m[2][0],
+            self.m[2][1],
+            self.m[2][2],
         ]
     }
 
     #[inline]
     pub fn as_flat_f32(&self) -> [f32; 9] {
         [
-            self.m[0][0] as f32, self.m[0][1] as f32, self.m[0][2] as f32,
-            self.m[1][0] as f32, self.m[1][1] as f32, self.m[1][2] as f32,
-            self.m[2][0] as f32, self.m[2][1] as f32, self.m[2][2] as f32,
+            self.m[0][0] as f32,
+            self.m[0][1] as f32,
+            self.m[0][2] as f32,
+            self.m[1][0] as f32,
+            self.m[1][1] as f32,
+            self.m[1][2] as f32,
+            self.m[2][0] as f32,
+            self.m[2][1] as f32,
+            self.m[2][2] as f32,
         ]
     }
 }
@@ -118,9 +133,13 @@ pub trait Interpolate: Copy + Send + Sync + Default + 'static {
 
 impl Interpolate for f32 {
     #[inline]
-    fn from_f64(v: f64) -> Self { v as f32 }
+    fn from_f64(v: f64) -> Self {
+        v as f32
+    }
     #[inline]
-    fn to_f64(self) -> f64 { self as f64 }
+    fn to_f64(self) -> f64 {
+        self as f64
+    }
 }
 
 // =============================================================================
@@ -142,14 +161,26 @@ pub fn affine_transform_3d_f32(
     {
         if is_x86_feature_detected!("avx512f") {
             unsafe {
-                simd::avx512::trilinear_3d_f32_avx512(input, &mut output.view_mut(), matrix, shift, cval);
+                simd::avx512::trilinear_3d_f32_avx512(
+                    input,
+                    &mut output.view_mut(),
+                    matrix,
+                    shift,
+                    cval,
+                );
             }
             return output;
         }
 
         if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
             unsafe {
-                simd::avx2::trilinear_3d_f32_avx2(input, &mut output.view_mut(), matrix, shift, cval);
+                simd::avx2::trilinear_3d_f32_avx2(
+                    input,
+                    &mut output.view_mut(),
+                    matrix,
+                    shift,
+                    cval,
+                );
             }
             return output;
         }
@@ -180,14 +211,29 @@ pub fn affine_transform_3d_f16(
     {
         if is_x86_feature_detected!("avx512f") {
             unsafe {
-                simd::avx512::trilinear_3d_f16_avx512(input, &mut output.view_mut(), matrix, shift, cval);
+                simd::avx512::trilinear_3d_f16_avx512(
+                    input,
+                    &mut output.view_mut(),
+                    matrix,
+                    shift,
+                    cval,
+                );
             }
             return output;
         }
 
-        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") && is_x86_feature_detected!("f16c") {
+        if is_x86_feature_detected!("avx2")
+            && is_x86_feature_detected!("fma")
+            && is_x86_feature_detected!("f16c")
+        {
             unsafe {
-                simd::avx2::trilinear_3d_f16_avx2(input, &mut output.view_mut(), matrix, shift, cval);
+                simd::avx2::trilinear_3d_f16_avx2(
+                    input,
+                    &mut output.view_mut(),
+                    matrix,
+                    shift,
+                    cval,
+                );
             }
             return output;
         }
@@ -222,7 +268,13 @@ pub fn affine_transform_3d_u8(
     {
         if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
             unsafe {
-                simd::avx2::trilinear_3d_u8_avx2(input, &mut output.view_mut(), matrix, shift, cval);
+                simd::avx2::trilinear_3d_u8_avx2(
+                    input,
+                    &mut output.view_mut(),
+                    matrix,
+                    shift,
+                    cval,
+                );
             }
             return output;
         }
@@ -254,7 +306,9 @@ pub fn map_coordinates_3d_f32(
         .iter()
         .zip(y_coords.iter())
         .zip(x_coords.iter())
-        .map(|((&z, &y), &x)| scalar::trilinear_interp_f32(input_slice, d, h, w, z, y, x, cval as f32))
+        .map(|((&z, &y), &x)| {
+            scalar::trilinear_interp_f32(input_slice, d, h, w, z, y, x, cval as f32)
+        })
         .collect()
 }
 

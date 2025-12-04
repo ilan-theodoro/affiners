@@ -1,7 +1,7 @@
 [package]
 name = "affiners"
 version = "0.2.0"
-edition = "2021"
+edition = "2024"
 authors = ["Ilan Theodoro"]
 description = "Fast 3D affine transformations with trilinear interpolation using AVX2/AVX512 SIMD"
 license = "BSD-3-Clause"

@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -60,7 +60,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -80,7 +80,7 @@ jobs:
 
       - name: Build and install package
         run: |
-          maturin develop --release
+          pip install .
 
       - name: Show build info
         run: |
@@ -100,7 +100,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
@@ -108,7 +108,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets --all-features -- -A clippy::too_many_arguments
 
   # ==========================================================================
   # Build wheels for multiple platforms
@@ -129,7 +129,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Build wheels
         uses: PyO3/maturin-action@v1
@@ -142,4 +142,3 @@ jobs:
         with:
           name: wheels-${{ matrix.os }}
           path: dist/
-

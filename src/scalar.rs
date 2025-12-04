@@ -36,7 +36,7 @@ pub fn trilinear_interp_f32(
     let z0u = z0 as usize;
     let y0u = y0 as usize;
     let x0u = x0 as usize;
-    
+
     // Clamp +1 indices to handle boundary
     let z1u = (z0u + 1).min(d - 1);
     let y1u = (y0u + 1).min(h - 1);
@@ -48,7 +48,7 @@ pub fn trilinear_interp_f32(
 
     let stride_z = h * w;
     let stride_y = w;
-    
+
     let idx000 = z0u * stride_z + y0u * stride_y + x0u;
     let idx001 = z0u * stride_z + y0u * stride_y + x1u;
     let idx010 = z0u * stride_z + y1u * stride_y + x0u;
@@ -98,9 +98,15 @@ pub fn trilinear_3d_scalar<T: Interpolate>(
     let output_slice = output.as_slice_mut().expect("Output must be C-contiguous");
 
     let m = &matrix.m;
-    let m00 = m[0][0]; let m01 = m[0][1]; let m02 = m[0][2];
-    let m10 = m[1][0]; let m11 = m[1][1]; let m12 = m[1][2];
-    let m20 = m[2][0]; let m21 = m[2][1]; let m22 = m[2][2];
+    let m00 = m[0][0];
+    let m01 = m[0][1];
+    let m02 = m[0][2];
+    let m10 = m[1][0];
+    let m11 = m[1][1];
+    let m12 = m[1][2];
+    let m20 = m[2][0];
+    let m21 = m[2][1];
+    let m22 = m[2][2];
 
     let shift_z = shift[0];
     let shift_y = shift[1];
@@ -135,14 +141,17 @@ pub fn trilinear_3d_scalar<T: Interpolate>(
 
                         let out_idx = oy * ow + ox;
 
-                        if x0 >= 0 && x0 < w as isize
-                            && y0 >= 0 && y0 < h as isize
-                            && z0 >= 0 && z0 < d as isize
+                        if x0 >= 0
+                            && x0 < w as isize
+                            && y0 >= 0
+                            && y0 < h as isize
+                            && z0 >= 0
+                            && z0 < d as isize
                         {
                             let z0u = z0 as usize;
                             let y0u = y0 as usize;
                             let x0u = x0 as usize;
-                            
+
                             // Clamp +1 indices to handle boundary
                             let z1u = (z0u + 1).min(d - 1);
                             let y1u = (y0u + 1).min(h - 1);
@@ -214,14 +223,17 @@ pub fn trilinear_3d_scalar<T: Interpolate>(
 
                     let out_idx = oz * oh * ow + oy * ow + ox;
 
-                    if x0 >= 0 && x0 < w as isize
-                        && y0 >= 0 && y0 < h as isize
-                        && z0 >= 0 && z0 < d as isize
+                    if x0 >= 0
+                        && x0 < w as isize
+                        && y0 >= 0
+                        && y0 < h as isize
+                        && z0 >= 0
+                        && z0 < d as isize
                     {
                         let z0u = z0 as usize;
                         let y0u = y0 as usize;
                         let x0u = x0 as usize;
-                        
+
                         // Clamp +1 indices to handle boundary
                         let z1u = (z0u + 1).min(d - 1);
                         let y1u = (y0u + 1).min(h - 1);
@@ -289,9 +301,15 @@ pub fn trilinear_3d_f16_scalar(
     let output_slice = output.as_slice_mut().expect("Output must be C-contiguous");
 
     let m = &matrix.m;
-    let m00 = m[0][0] as f32; let m01 = m[0][1] as f32; let m02 = m[0][2] as f32;
-    let m10 = m[1][0] as f32; let m11 = m[1][1] as f32; let m12 = m[1][2] as f32;
-    let m20 = m[2][0] as f32; let m21 = m[2][1] as f32; let m22 = m[2][2] as f32;
+    let m00 = m[0][0] as f32;
+    let m01 = m[0][1] as f32;
+    let m02 = m[0][2] as f32;
+    let m10 = m[1][0] as f32;
+    let m11 = m[1][1] as f32;
+    let m12 = m[1][2] as f32;
+    let m20 = m[2][0] as f32;
+    let m21 = m[2][1] as f32;
+    let m22 = m[2][2] as f32;
 
     let shift_z = shift[0] as f32;
     let shift_y = shift[1] as f32;
@@ -327,14 +345,17 @@ pub fn trilinear_3d_f16_scalar(
 
                         let out_idx = oy * ow + ox;
 
-                        if x0 >= 0 && x0 < w as i32
-                            && y0 >= 0 && y0 < h as i32
-                            && z0 >= 0 && z0 < d as i32
+                        if x0 >= 0
+                            && x0 < w as i32
+                            && y0 >= 0
+                            && y0 < h as i32
+                            && z0 >= 0
+                            && z0 < d as i32
                         {
                             let z0u = z0 as usize;
                             let y0u = y0 as usize;
                             let x0u = x0 as usize;
-                            
+
                             // Clamp +1 indices to handle boundary
                             let z1u = (z0u + 1).min(d - 1);
                             let y1u = (y0u + 1).min(h - 1);
@@ -406,14 +427,17 @@ pub fn trilinear_3d_f16_scalar(
 
                     let out_idx = oz * oh * ow + oy * ow + ox;
 
-                    if x0 >= 0 && x0 < w as i32
-                        && y0 >= 0 && y0 < h as i32
-                        && z0 >= 0 && z0 < d as i32
+                    if x0 >= 0
+                        && x0 < w as i32
+                        && y0 >= 0
+                        && y0 < h as i32
+                        && z0 >= 0
+                        && z0 < d as i32
                     {
                         let z0u = z0 as usize;
                         let y0u = y0 as usize;
                         let x0u = x0 as usize;
-                        
+
                         // Clamp +1 indices to handle boundary
                         let z1u = (z0u + 1).min(d - 1);
                         let y1u = (y0u + 1).min(h - 1);
@@ -481,9 +505,15 @@ pub fn trilinear_3d_u8_scalar(
     let output_slice = output.as_slice_mut().expect("Output must be C-contiguous");
 
     let m = &matrix.m;
-    let m00 = m[0][0] as f32; let m01 = m[0][1] as f32; let m02 = m[0][2] as f32;
-    let m10 = m[1][0] as f32; let m11 = m[1][1] as f32; let m12 = m[1][2] as f32;
-    let m20 = m[2][0] as f32; let m21 = m[2][1] as f32; let m22 = m[2][2] as f32;
+    let m00 = m[0][0] as f32;
+    let m01 = m[0][1] as f32;
+    let m02 = m[0][2] as f32;
+    let m10 = m[1][0] as f32;
+    let m11 = m[1][1] as f32;
+    let m12 = m[1][2] as f32;
+    let m20 = m[2][0] as f32;
+    let m21 = m[2][1] as f32;
+    let m22 = m[2][2] as f32;
 
     let shift_z = shift[0] as f32;
     let shift_y = shift[1] as f32;
@@ -518,14 +548,17 @@ pub fn trilinear_3d_u8_scalar(
 
                         let out_idx = oy * ow + ox;
 
-                        if x0 >= 0 && x0 < w as i32
-                            && y0 >= 0 && y0 < h as i32
-                            && z0 >= 0 && z0 < d as i32
+                        if x0 >= 0
+                            && x0 < w as i32
+                            && y0 >= 0
+                            && y0 < h as i32
+                            && z0 >= 0
+                            && z0 < d as i32
                         {
                             let z0u = z0 as usize;
                             let y0u = y0 as usize;
                             let x0u = x0 as usize;
-                            
+
                             // Clamp +1 indices to handle boundary
                             let z1u = (z0u + 1).min(d - 1);
                             let y1u = (y0u + 1).min(h - 1);
@@ -597,14 +630,17 @@ pub fn trilinear_3d_u8_scalar(
 
                     let out_idx = oz * oh * ow + oy * ow + ox;
 
-                    if x0 >= 0 && x0 < w as i32
-                        && y0 >= 0 && y0 < h as i32
-                        && z0 >= 0 && z0 < d as i32
+                    if x0 >= 0
+                        && x0 < w as i32
+                        && y0 >= 0
+                        && y0 < h as i32
+                        && z0 >= 0
+                        && z0 < d as i32
                     {
                         let z0u = z0 as usize;
                         let y0u = y0 as usize;
                         let x0u = x0 as usize;
-                        
+
                         // Clamp +1 indices to handle boundary
                         let z1u = (z0u + 1).min(d - 1);
                         let y1u = (y0u + 1).min(h - 1);
@@ -662,8 +698,14 @@ mod tests {
     #[test]
     fn test_trilinear_interp_center() {
         let mut data = vec![0.0f32; 27];
-        data[0] = 0.0;  data[1] = 1.0;  data[3] = 2.0;  data[4] = 3.0;
-        data[9] = 4.0;  data[10] = 5.0; data[12] = 6.0; data[13] = 7.0;
+        data[0] = 0.0;
+        data[1] = 1.0;
+        data[3] = 2.0;
+        data[4] = 3.0;
+        data[9] = 4.0;
+        data[10] = 5.0;
+        data[12] = 6.0;
+        data[13] = 7.0;
 
         let result = trilinear_interp_f32(&data, 3, 3, 3, 0.5, 0.5, 0.5, 0.0);
         let expected = (0.0 + 1.0 + 2.0 + 3.0 + 4.0 + 5.0 + 6.0 + 7.0) / 8.0;
@@ -675,8 +717,17 @@ mod tests {
         let data = vec![1.0f32; 27];
         let cval = -999.0;
 
-        assert_eq!(trilinear_interp_f32(&data, 3, 3, 3, -1.0, 0.0, 0.0, cval), cval);
-        assert_eq!(trilinear_interp_f32(&data, 3, 3, 3, 0.0, -1.0, 0.0, cval), cval);
-        assert_eq!(trilinear_interp_f32(&data, 3, 3, 3, 0.0, 0.0, -1.0, cval), cval);
+        assert_eq!(
+            trilinear_interp_f32(&data, 3, 3, 3, -1.0, 0.0, 0.0, cval),
+            cval
+        );
+        assert_eq!(
+            trilinear_interp_f32(&data, 3, 3, 3, 0.0, -1.0, 0.0, cval),
+            cval
+        );
+        assert_eq!(
+            trilinear_interp_f32(&data, 3, 3, 3, 0.0, 0.0, -1.0, cval),
+            cval
+        );
     }
 }
