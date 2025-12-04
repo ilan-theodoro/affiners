@@ -13,7 +13,7 @@
 //!
 //! ```rust
 //! use ndarray::Array3;
-//! use interp3d_avx2::{affine_transform_3d_f32, AffineMatrix3D};
+//! use affiners::{affine_transform_3d_f32, AffineMatrix3D};
 //!
 //! let input = Array3::<f32>::zeros((100, 100, 100));
 //! let matrix = AffineMatrix3D::identity();
