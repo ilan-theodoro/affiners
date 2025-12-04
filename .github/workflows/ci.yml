@@ -80,7 +80,7 @@ jobs:
 
       - name: Build and install package
         run: |
-          maturin develop --release
+          pip install .
 
       - name: Show build info
         run: |
