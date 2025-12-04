@@ -24,7 +24,7 @@ Benchmark on AMD Ryzen 9 9950X (32 threads):
 ## Installation
 
 ```bash
-pip install affiners
+pip install affine-rs
 ```
 
 Or build from source:
