@@ -6,9 +6,7 @@ use numpy::{IntoPyArray, PyArray3, PyReadonlyArray2, PyReadonlyArray3, PyUntyped
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-use crate::{
-    AffineMatrix3D, affine_transform_3d_f16, affine_transform_3d_f32, affine_transform_3d_u8,
-};
+use crate::{affine_transform_3d_f16, affine_transform_3d_f32, affine_transform_3d_u8};
 
 // =============================================================================
 // Build Info
@@ -120,20 +118,24 @@ fn build_info(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
 ///
 /// Args:
 ///     input: 3D numpy array (f32)
-///     matrix: 3x3 transformation matrix
-///     offset: Translation vector [z, y, x]
+///     matrix: 4x4 homogeneous transformation matrix
 ///     cval: Constant value for out-of-bounds (default: 0.0)
 ///     order: Interpolation order (only 1 is supported)
+///
+/// The matrix format is:
+///     [[m00, m01, m02, tz],
+///      [m10, m11, m12, ty],
+///      [m20, m21, m22, tx],
+///      [0,   0,   0,   1 ]]
 ///
 /// Returns:
 ///     Transformed 3D array
 #[pyfunction]
-#[pyo3(signature = (input, matrix, offset=None, cval=0.0, order=1))]
+#[pyo3(signature = (input, matrix, cval=0.0, order=1))]
 fn affine_transform<'py>(
     py: Python<'py>,
     input: PyReadonlyArray3<'py, f32>,
     matrix: PyReadonlyArray2<'py, f64>,
-    offset: Option<Vec<f64>>,
     cval: f64,
     order: i32,
 ) -> PyResult<Bound<'py, PyArray3<f32>>> {
@@ -143,31 +145,16 @@ fn affine_transform<'py>(
         ));
     }
 
-    let matrix_slice = matrix.as_slice()?;
-    if matrix_slice.len() != 9 {
+    let shape = matrix.shape();
+    if shape != [4, 4] {
         return Err(pyo3::exceptions::PyValueError::new_err(
-            "Matrix must be 3x3",
+            "Matrix must be 4x4 homogeneous transformation matrix",
         ));
     }
 
-    let affine_matrix = AffineMatrix3D::new([
-        [matrix_slice[0], matrix_slice[1], matrix_slice[2]],
-        [matrix_slice[3], matrix_slice[4], matrix_slice[5]],
-        [matrix_slice[6], matrix_slice[7], matrix_slice[8]],
-    ]);
-
-    let shift = match offset {
-        Some(v) if v.len() == 3 => [v[0], v[1], v[2]],
-        Some(_) => {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                "Offset must have 3 elements",
-            ));
-        }
-        None => [0.0, 0.0, 0.0],
-    };
-
     let input_array = input.as_array();
-    let output = affine_transform_3d_f32(&input_array, &affine_matrix, &shift, cval);
+    let matrix_array = matrix.as_array();
+    let output = affine_transform_3d_f32(&input_array, &matrix_array, cval);
 
     Ok(output.into_pyarray(py))
 }
@@ -178,14 +165,19 @@ fn affine_transform<'py>(
 
 /// Apply 3D affine transformation for f16 arrays
 ///
+/// Args:
+///     input: 3D numpy array (float16, passed as u16)
+///     matrix: 4x4 homogeneous transformation matrix
+///     cval: Constant value for out-of-bounds (default: 0.0)
+///     order: Interpolation order (only 1 is supported)
+///
 /// Note: numpy float16 is stored as u16 bits, same as half::f16
 #[pyfunction]
-#[pyo3(signature = (input, matrix, offset=None, cval=0.0, order=1))]
+#[pyo3(signature = (input, matrix, cval=0.0, order=1))]
 fn affine_transform_f16<'py>(
     py: Python<'py>,
     input: PyReadonlyArray3<'py, u16>, // numpy float16 stored as u16
     matrix: PyReadonlyArray2<'py, f64>,
-    offset: Option<Vec<f64>>,
     cval: f64,
     order: i32,
 ) -> PyResult<Bound<'py, PyArray3<u16>>> {
@@ -195,28 +187,12 @@ fn affine_transform_f16<'py>(
         ));
     }
 
-    let matrix_slice = matrix.as_slice()?;
-    if matrix_slice.len() != 9 {
+    let mat_shape = matrix.shape();
+    if mat_shape != [4, 4] {
         return Err(pyo3::exceptions::PyValueError::new_err(
-            "Matrix must be 3x3",
+            "Matrix must be 4x4 homogeneous transformation matrix",
         ));
     }
-
-    let affine_matrix = AffineMatrix3D::new([
-        [matrix_slice[0], matrix_slice[1], matrix_slice[2]],
-        [matrix_slice[3], matrix_slice[4], matrix_slice[5]],
-        [matrix_slice[6], matrix_slice[7], matrix_slice[8]],
-    ]);
-
-    let shift = match offset {
-        Some(v) if v.len() == 3 => [v[0], v[1], v[2]],
-        Some(_) => {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                "Offset must have 3 elements",
-            ));
-        }
-        None => [0.0, 0.0, 0.0],
-    };
 
     let shape = input.shape();
     let (d, h, w) = (shape[0], shape[1], shape[2]);
@@ -230,7 +206,8 @@ fn affine_transform_f16<'py>(
     let input_array = ndarray::ArrayView3::from_shape((d, h, w), input_f16)
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Shape error: {}", e)))?;
 
-    let output = affine_transform_3d_f16(&input_array, &affine_matrix, &shift, cval);
+    let matrix_array = matrix.as_array();
+    let output = affine_transform_3d_f16(&input_array, &matrix_array, cval);
 
     // Reinterpret f16 output as u16 for numpy
     let output_u16: Array3<u16> = unsafe {
@@ -253,46 +230,29 @@ fn affine_transform_f16<'py>(
 ///
 /// Args:
 ///     input: 3D numpy array (uint8)
-///     matrix: 3x3 transformation matrix
-///     offset: Translation vector [z, y, x]
+///     matrix: 4x4 homogeneous transformation matrix
 ///     cval: Constant value for out-of-bounds (default: 0)
 ///
 /// Returns:
 ///     Transformed 3D array (uint8)
 #[pyfunction]
-#[pyo3(signature = (input, matrix, offset=None, cval=0))]
+#[pyo3(signature = (input, matrix, cval=0))]
 fn affine_transform_u8<'py>(
     py: Python<'py>,
     input: PyReadonlyArray3<'py, u8>,
     matrix: PyReadonlyArray2<'py, f64>,
-    offset: Option<Vec<f64>>,
     cval: u8,
 ) -> PyResult<Bound<'py, PyArray3<u8>>> {
-    let matrix_slice = matrix.as_slice()?;
-    if matrix_slice.len() != 9 {
+    let shape = matrix.shape();
+    if shape != [4, 4] {
         return Err(pyo3::exceptions::PyValueError::new_err(
-            "Matrix must be 3x3",
+            "Matrix must be 4x4 homogeneous transformation matrix",
         ));
     }
 
-    let affine_matrix = AffineMatrix3D::new([
-        [matrix_slice[0], matrix_slice[1], matrix_slice[2]],
-        [matrix_slice[3], matrix_slice[4], matrix_slice[5]],
-        [matrix_slice[6], matrix_slice[7], matrix_slice[8]],
-    ]);
-
-    let shift = match offset {
-        Some(v) if v.len() == 3 => [v[0], v[1], v[2]],
-        Some(_) => {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                "Offset must have 3 elements",
-            ));
-        }
-        None => [0.0, 0.0, 0.0],
-    };
-
     let input_array = input.as_array();
-    let output = affine_transform_3d_u8(&input_array, &affine_matrix, &shift, cval);
+    let matrix_array = matrix.as_array();
+    let output = affine_transform_3d_u8(&input_array, &matrix_array, cval);
 
     Ok(output.into_pyarray(py))
 }
@@ -302,6 +262,12 @@ fn affine_transform_u8<'py>(
 // =============================================================================
 
 /// Fast 3D affine transformations with trilinear interpolation using AVX2/AVX512 SIMD
+///
+/// All functions accept a 4x4 homogeneous transformation matrix:
+///     [[m00, m01, m02, tz],
+///      [m10, m11, m12, ty],
+///      [m20, m21, m22, tx],
+///      [0,   0,   0,   1 ]]
 ///
 /// Supported data types:
 /// - f32: affine_transform() - Standard floating point

@@ -41,21 +41,25 @@ pip install .
 import numpy as np
 import affiners
 
-# Define transformation
+# Define 4x4 homogeneous transformation matrix
+# Format: [[m00, m01, m02, tz],
+#          [m10, m11, m12, ty],
+#          [m20, m21, m22, tx],
+#          [0,   0,   0,   1 ]]
 matrix = np.array([
-    [1.0, 0.25, 0.01],
-    [0.0, 1.0, 0.0],
-    [0.0, -0.02, 1.0],
+    [1.0, 0.25, 0.01, -10.0],
+    [0.0, 1.0, 0.0, -5.0],
+    [0.0, -0.02, 1.0, 8.0],
+    [0.0, 0.0, 0.0, 1.0],
 ], dtype=np.float64)
-offset = np.array([-10.0, -5.0, 8.0])
 
 # Float32 data
 input_f32 = np.random.rand(512, 512, 512).astype(np.float32)
-output_f32 = affiners.affine_transform(input_f32, matrix, offset=offset)
+output_f32 = affiners.affine_transform(input_f32, matrix)
 
 # uint8 data (2.2x faster!)
 input_u8 = np.random.randint(0, 256, (512, 512, 512), dtype=np.uint8)
-output_u8 = affiners.affine_transform_u8(input_u8, matrix, offset=offset)
+output_u8 = affiners.affine_transform_u8(input_u8, matrix)
 ```
 
 ### Check Build Info
@@ -72,18 +76,24 @@ print(affiners.build_info())
 ### Rust
 
 ```rust
-use ndarray::Array3;
-use affiners::{affine_transform_3d_f32, affine_transform_3d_u8, AffineMatrix3D};
+use ndarray::{Array2, Array3};
+use affiners::{affine_transform_3d_f32, affine_transform_3d_u8};
+
+// Create 4x4 homogeneous transformation matrix (identity with translation)
+let matrix = Array2::from_shape_vec((4, 4), vec![
+    1.0, 0.0, 0.0, 10.0,  // tz = 10
+    0.0, 1.0, 0.0, 20.0,  // ty = 20
+    0.0, 0.0, 1.0, 30.0,  // tx = 30
+    0.0, 0.0, 0.0, 1.0,
+]).unwrap();
 
 // Float32
 let input_f32 = Array3::<f32>::zeros((100, 100, 100));
-let matrix = AffineMatrix3D::identity();
-let shift = [10.0, 20.0, 30.0];
-let output_f32 = affine_transform_3d_f32(&input_f32.view(), &matrix, &shift, 0.0);
+let output_f32 = affine_transform_3d_f32(&input_f32.view(), &matrix.view(), 0.0);
 
 // uint8 (2.2x faster!)
 let input_u8 = Array3::<u8>::zeros((100, 100, 100));
-let output_u8 = affine_transform_3d_u8(&input_u8.view(), &matrix, &shift, 0);
+let output_u8 = affine_transform_3d_u8(&input_u8.view(), &matrix.view(), 0);
 ```
 
 ## API Reference
@@ -92,16 +102,21 @@ let output_u8 = affine_transform_3d_u8(&input_u8.view(), &matrix, &shift, 0);
 
 | Function | Input Type | Description |
 |----------|------------|-------------|
-| `affine_transform(input, matrix, offset, cval)` | float32 | Standard floating point |
-| `affine_transform_f16(input, matrix, offset, cval)` | float16 | Half precision (pass as `.view(np.uint16)`) |
-| `affine_transform_u8(input, matrix, offset, cval)` | uint8 | **2.2x faster**, 4x less memory |
+| `affine_transform(input, matrix, cval)` | float32 | Standard floating point |
+| `affine_transform_f16(input, matrix, cval)` | float16 | Half precision (pass as `.view(np.uint16)`) |
+| `affine_transform_u8(input, matrix, cval)` | uint8 | **2.2x faster**, 4x less memory |
 | `build_info()` | - | Get version, SIMD features, and backend info |
 
 ### Parameters
 
 - `input`: 3D numpy array (C-contiguous)
-- `matrix`: 3x3 transformation matrix (float64)
-- `offset`: Translation vector [z, y, x] (optional, default: [0, 0, 0])
+- `matrix`: 4x4 homogeneous transformation matrix (float64)
+  ```
+  [[m00, m01, m02, tz],
+   [m10, m11, m12, ty],
+   [m20, m21, m22, tx],
+   [0,   0,   0,   1 ]]
+  ```
 - `cval`: Constant value for out-of-bounds (default: 0)
 
 ## When to Use Each Type

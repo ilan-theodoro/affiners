@@ -12,14 +12,19 @@
 //! # Example
 //!
 //! ```rust
-//! use ndarray::Array3;
-//! use affiners::{affine_transform_3d_f32, AffineMatrix3D};
+//! use ndarray::{Array2, Array3};
+//! use affiners::affine_transform_3d_f32;
 //!
 //! let input = Array3::<f32>::zeros((100, 100, 100));
-//! let matrix = AffineMatrix3D::identity();
-//! let shift = [10.0, 20.0, 30.0];
+//! // 4x4 homogeneous transformation matrix (identity with translation [10, 20, 30])
+//! let matrix = Array2::from_shape_vec((4, 4), vec![
+//!     1.0, 0.0, 0.0, 10.0,
+//!     0.0, 1.0, 0.0, 20.0,
+//!     0.0, 0.0, 1.0, 30.0,
+//!     0.0, 0.0, 0.0, 1.0,
+//! ]).unwrap();
 //!
-//! let output = affine_transform_3d_f32(&input.view(), &matrix, &shift, 0.0);
+//! let output = affine_transform_3d_f32(&input.view(), &matrix.view(), 0.0);
 //! ```
 
 pub mod scalar;
@@ -29,7 +34,7 @@ pub mod simd;
 mod python;
 
 pub use half::f16;
-use ndarray::{Array3, ArrayView3};
+use ndarray::{Array3, ArrayView2, ArrayView3};
 
 /// 3x3 affine transformation matrix (row-major)
 ///
@@ -48,6 +53,43 @@ impl AffineMatrix3D {
     #[inline]
     pub fn new(m: [[f64; 3]; 3]) -> Self {
         Self { m }
+    }
+
+    /// Decompose a 4x4 homogeneous transformation matrix into a 3x3 affine matrix and shift vector.
+    ///
+    /// The homogeneous matrix format is:
+    /// ```text
+    /// [m00 m01 m02 tz]
+    /// [m10 m11 m12 ty]
+    /// [m20 m21 m22 tx]
+    /// [0   0   0   1 ]
+    /// ```
+    ///
+    /// Returns `(AffineMatrix3D, [shift_z, shift_y, shift_x])`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the input matrix is not 4x4.
+    #[inline]
+    pub fn from_homogeneous(matrix: &ArrayView2<f64>) -> (Self, [f64; 3]) {
+        let shape = matrix.dim();
+        assert!(
+            shape == (4, 4),
+            "Homogeneous matrix must be 4x4, got {:?}",
+            shape
+        );
+
+        let affine = Self {
+            m: [
+                [matrix[[0, 0]], matrix[[0, 1]], matrix[[0, 2]]],
+                [matrix[[1, 0]], matrix[[1, 1]], matrix[[1, 2]]],
+                [matrix[[2, 0]], matrix[[2, 1]], matrix[[2, 2]]],
+            ],
+        };
+
+        let shift = [matrix[[0, 3]], matrix[[1, 3]], matrix[[2, 3]]];
+
+        (affine, shift)
     }
 
     #[inline]
@@ -147,8 +189,43 @@ impl Interpolate for f32 {
 // =============================================================================
 
 /// Apply 3D affine transformation with trilinear interpolation (f32)
+///
+/// # Arguments
+///
+/// * `input` - 3D input array
+/// * `homogeneous_matrix` - 4x4 homogeneous transformation matrix
+/// * `cval` - Constant value for out-of-bounds coordinates
+///
+/// # Example
+///
+/// ```rust
+/// use ndarray::{Array2, Array3};
+/// use affiners::affine_transform_3d_f32;
+///
+/// let input = Array3::<f32>::zeros((100, 100, 100));
+/// // Identity transform with translation [10, 20, 30]
+/// let matrix = Array2::from_shape_vec((4, 4), vec![
+///     1.0, 0.0, 0.0, 10.0,
+///     0.0, 1.0, 0.0, 20.0,
+///     0.0, 0.0, 1.0, 30.0,
+///     0.0, 0.0, 0.0, 1.0,
+/// ]).unwrap();
+///
+/// let output = affine_transform_3d_f32(&input.view(), &matrix.view(), 0.0);
+/// ```
 #[inline]
 pub fn affine_transform_3d_f32(
+    input: &ArrayView3<f32>,
+    homogeneous_matrix: &ArrayView2<f64>,
+    cval: f64,
+) -> Array3<f32> {
+    let (matrix, shift) = AffineMatrix3D::from_homogeneous(homogeneous_matrix);
+    affine_transform_3d_f32_internal(input, &matrix, &shift, cval)
+}
+
+/// Internal implementation that takes decomposed matrix and shift
+#[inline]
+fn affine_transform_3d_f32_internal(
     input: &ArrayView3<f32>,
     matrix: &AffineMatrix3D,
     shift: &[f64; 3],
@@ -197,8 +274,25 @@ pub fn affine_transform_3d_f32(
 /// Apply 3D affine transformation with trilinear interpolation (f16)
 ///
 /// Computation is performed in f32 for accuracy, with f16↔f32 conversion.
+///
+/// # Arguments
+///
+/// * `input` - 3D input array (f16)
+/// * `homogeneous_matrix` - 4x4 homogeneous transformation matrix
+/// * `cval` - Constant value for out-of-bounds coordinates
 #[inline]
 pub fn affine_transform_3d_f16(
+    input: &ArrayView3<f16>,
+    homogeneous_matrix: &ArrayView2<f64>,
+    cval: f64,
+) -> Array3<f16> {
+    let (matrix, shift) = AffineMatrix3D::from_homogeneous(homogeneous_matrix);
+    affine_transform_3d_f16_internal(input, &matrix, &shift, cval)
+}
+
+/// Internal implementation that takes decomposed matrix and shift
+#[inline]
+fn affine_transform_3d_f16_internal(
     input: &ArrayView3<f16>,
     matrix: &AffineMatrix3D,
     shift: &[f64; 3],
@@ -254,8 +348,25 @@ pub fn affine_transform_3d_f16(
 /// - 4x less memory consumption
 ///
 /// Ideal for image data (microscopy, CT, MRI).
+///
+/// # Arguments
+///
+/// * `input` - 3D input array (u8)
+/// * `homogeneous_matrix` - 4x4 homogeneous transformation matrix
+/// * `cval` - Constant value for out-of-bounds coordinates
 #[inline]
 pub fn affine_transform_3d_u8(
+    input: &ArrayView3<u8>,
+    homogeneous_matrix: &ArrayView2<f64>,
+    cval: u8,
+) -> Array3<u8> {
+    let (matrix, shift) = AffineMatrix3D::from_homogeneous(homogeneous_matrix);
+    affine_transform_3d_u8_internal(input, &matrix, &shift, cval)
+}
+
+/// Internal implementation that takes decomposed matrix and shift
+#[inline]
+fn affine_transform_3d_u8_internal(
     input: &ArrayView3<u8>,
     matrix: &AffineMatrix3D,
     shift: &[f64; 3],
@@ -320,15 +431,36 @@ pub fn map_coordinates_3d_f32(
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
-    use ndarray::Array3;
+    use ndarray::{Array2, Array3};
+
+    /// Create a 4x4 identity homogeneous matrix
+    fn identity_homogeneous() -> Array2<f64> {
+        Array2::from_shape_vec(
+            (4, 4),
+            vec![
+                1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+        )
+        .unwrap()
+    }
+
+    /// Create a 4x4 homogeneous matrix with translation
+    fn translation_homogeneous(tz: f64, ty: f64, tx: f64) -> Array2<f64> {
+        Array2::from_shape_vec(
+            (4, 4),
+            vec![
+                1.0, 0.0, 0.0, tz, 0.0, 1.0, 0.0, ty, 0.0, 0.0, 1.0, tx, 0.0, 0.0, 0.0, 1.0,
+            ],
+        )
+        .unwrap()
+    }
 
     #[test]
     fn test_identity_transform_f32() {
         let input = Array3::from_shape_fn((10, 10, 10), |(z, y, x)| (z * 100 + y * 10 + x) as f32);
-        let matrix = AffineMatrix3D::identity();
-        let shift = [0.0, 0.0, 0.0];
+        let matrix = identity_homogeneous();
 
-        let output = affine_transform_3d_f32(&input.view(), &matrix, &shift, 0.0);
+        let output = affine_transform_3d_f32(&input.view(), &matrix.view(), 0.0);
 
         for z in 1..9 {
             for y in 1..9 {
@@ -342,10 +474,9 @@ mod tests {
     #[test]
     fn test_translation() {
         let input = Array3::from_shape_fn((20, 20, 20), |(z, y, x)| (z + y + x) as f32);
-        let matrix = AffineMatrix3D::identity();
-        let shift = [1.0, 1.0, 1.0];
+        let matrix = translation_homogeneous(1.0, 1.0, 1.0);
 
-        let output = affine_transform_3d_f32(&input.view(), &matrix, &shift, 0.0);
+        let output = affine_transform_3d_f32(&input.view(), &matrix.view(), 0.0);
 
         for z in 2..17 {
             for y in 2..17 {
@@ -368,5 +499,32 @@ mod tests {
         assert_eq!(scale.m[0][0], 2.0);
         assert_eq!(scale.m[1][1], 3.0);
         assert_eq!(scale.m[2][2], 4.0);
+    }
+
+    #[test]
+    fn test_from_homogeneous() {
+        let homogeneous = Array2::from_shape_vec(
+            (4, 4),
+            vec![
+                1.0, 2.0, 3.0, 10.0, 4.0, 5.0, 6.0, 20.0, 7.0, 8.0, 9.0, 30.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+        )
+        .unwrap();
+
+        let (affine, shift) = AffineMatrix3D::from_homogeneous(&homogeneous.view());
+
+        assert_eq!(affine.m[0][0], 1.0);
+        assert_eq!(affine.m[0][1], 2.0);
+        assert_eq!(affine.m[0][2], 3.0);
+        assert_eq!(affine.m[1][0], 4.0);
+        assert_eq!(affine.m[1][1], 5.0);
+        assert_eq!(affine.m[1][2], 6.0);
+        assert_eq!(affine.m[2][0], 7.0);
+        assert_eq!(affine.m[2][1], 8.0);
+        assert_eq!(affine.m[2][2], 9.0);
+
+        assert_eq!(shift[0], 10.0);
+        assert_eq!(shift[1], 20.0);
+        assert_eq!(shift[2], 30.0);
     }
 }
