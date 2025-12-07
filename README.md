@@ -51,18 +51,23 @@ matrix = np.array([
     [0.0, 1.0, 0.0, -5.0],
     [0.0, -0.02, 1.0, 8.0],
     [0.0, 0.0, 0.0, 1.0],
-], dtype=np.float64)
+])  # Any numeric dtype works - auto-converted to float64
 
-# Float32 data (output same shape as input)
+# affine_transform auto-dispatches based on input dtype
+# Float32 data
 input_f32 = np.random.rand(512, 512, 512).astype(np.float32)
-output_f32 = affiners.affine_transform(input_f32, matrix)
-
-# With custom output shape
-output_f32 = affiners.affine_transform(input_f32, matrix, output_shape=(256, 256, 256))
+output_f32 = affiners.affine_transform(input_f32, matrix)  # returns float32
 
 # uint8 data (2.2x faster!)
 input_u8 = np.random.randint(0, 256, (512, 512, 512), dtype=np.uint8)
-output_u8 = affiners.affine_transform_u8(input_u8, matrix)
+output_u8 = affiners.affine_transform(input_u8, matrix)  # returns uint8
+
+# float16 data (2x less memory)
+input_f16 = input_f32.astype(np.float16)
+output_f16 = affiners.affine_transform(input_f16, matrix)  # returns float16
+
+# With custom output shape
+output = affiners.affine_transform(input_f32, matrix, output_shape=(256, 256, 256))
 ```
 
 ### Check Build Info
@@ -70,9 +75,9 @@ output_u8 = affiners.affine_transform_u8(input_u8, matrix)
 ```python
 import affiners
 
-print(affiners.__version__)  # '0.1.0'
+print(affiners.__version__)  # '0.2.0'
 print(affiners.build_info())
-# {'version': '0.1.0', 'simd': {'avx2': True, 'avx512f': True, ...}, 
+# {'version': '0.2.0', 'simd': {'avx2': True, 'avx512f': True, ...}, 
 #  'backend_f32': 'avx512', 'backend_u8': 'avx2', 'num_threads': 32, ...}
 ```
 
@@ -106,17 +111,25 @@ let output_u8 = affine_transform_3d_u8(&input_u8.view(), &matrix.view(), None, 0
 
 ### Python
 
+**Main function (auto-dispatches based on input dtype):**
+
 | Function | Input Type | Description |
 |----------|------------|-------------|
-| `affine_transform(input, matrix, output_shape, cval)` | float32 | Standard floating point |
-| `affine_transform_f16(input, matrix, output_shape, cval)` | float16 | Half precision (pass as `.view(np.uint16)`) |
+| `affine_transform(input, matrix, output_shape, cval)` | float32, float16, uint8 | Auto-dispatches, preserves dtype |
+
+**Type-specific functions (for explicit control):**
+
+| Function | Input Type | Description |
+|----------|------------|-------------|
+| `affine_transform_f32(input, matrix, output_shape, cval)` | float32 | Standard floating point |
+| `affine_transform_f16(input, matrix, output_shape, cval)` | uint16 | Half precision (pass as `.view(np.uint16)`) |
 | `affine_transform_u8(input, matrix, output_shape, cval)` | uint8 | **2.2x faster**, 4x less memory |
 | `build_info()` | - | Get version, SIMD features, and backend info |
 
 ### Parameters
 
 - `input`: 3D numpy array (C-contiguous)
-- `matrix`: 4x4 homogeneous transformation matrix (float64)
+- `matrix`: 4x4 homogeneous transformation matrix (any numeric dtype, auto-converted to float64)
   ```
   [[m00, m01, m02, tz],
    [m10, m11, m12, ty],
