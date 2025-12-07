@@ -1,6 +1,0 @@
-# Build with native CPU optimizations when compiling from source
-# This enables AVX2/AVX512 instructions specific to the build machine
-
-[target.'cfg(target_arch = "x86_64")']
-rustflags = ["-C", "target-cpu=native"]
-
