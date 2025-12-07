@@ -53,9 +53,12 @@ matrix = np.array([
     [0.0, 0.0, 0.0, 1.0],
 ], dtype=np.float64)
 
-# Float32 data
+# Float32 data (output same shape as input)
 input_f32 = np.random.rand(512, 512, 512).astype(np.float32)
 output_f32 = affiners.affine_transform(input_f32, matrix)
+
+# With custom output shape
+output_f32 = affiners.affine_transform(input_f32, matrix, output_shape=(256, 256, 256))
 
 # uint8 data (2.2x faster!)
 input_u8 = np.random.randint(0, 256, (512, 512, 512), dtype=np.uint8)
@@ -87,13 +90,16 @@ let matrix = Array2::from_shape_vec((4, 4), vec![
     0.0, 0.0, 0.0, 1.0,
 ]).unwrap();
 
-// Float32
+// Float32 (output same shape as input)
 let input_f32 = Array3::<f32>::zeros((100, 100, 100));
-let output_f32 = affine_transform_3d_f32(&input_f32.view(), &matrix.view(), 0.0);
+let output_f32 = affine_transform_3d_f32(&input_f32.view(), &matrix.view(), None, 0.0);
+
+// With custom output shape
+let output_f32 = affine_transform_3d_f32(&input_f32.view(), &matrix.view(), Some((50, 50, 50)), 0.0);
 
 // uint8 (2.2x faster!)
 let input_u8 = Array3::<u8>::zeros((100, 100, 100));
-let output_u8 = affine_transform_3d_u8(&input_u8.view(), &matrix.view(), 0);
+let output_u8 = affine_transform_3d_u8(&input_u8.view(), &matrix.view(), None, 0);
 ```
 
 ## API Reference
@@ -102,9 +108,9 @@ let output_u8 = affine_transform_3d_u8(&input_u8.view(), &matrix.view(), 0);
 
 | Function | Input Type | Description |
 |----------|------------|-------------|
-| `affine_transform(input, matrix, cval)` | float32 | Standard floating point |
-| `affine_transform_f16(input, matrix, cval)` | float16 | Half precision (pass as `.view(np.uint16)`) |
-| `affine_transform_u8(input, matrix, cval)` | uint8 | **2.2x faster**, 4x less memory |
+| `affine_transform(input, matrix, output_shape, cval)` | float32 | Standard floating point |
+| `affine_transform_f16(input, matrix, output_shape, cval)` | float16 | Half precision (pass as `.view(np.uint16)`) |
+| `affine_transform_u8(input, matrix, output_shape, cval)` | uint8 | **2.2x faster**, 4x less memory |
 | `build_info()` | - | Get version, SIMD features, and backend info |
 
 ### Parameters
@@ -117,6 +123,7 @@ let output_u8 = affine_transform_3d_u8(&input_u8.view(), &matrix.view(), 0);
    [m20, m21, m22, tx],
    [0,   0,   0,   1 ]]
   ```
+- `output_shape`: Optional tuple (z, y, x) for output dimensions (default: same as input)
 - `cval`: Constant value for out-of-bounds (default: 0)
 
 ## When to Use Each Type

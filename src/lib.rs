@@ -24,7 +24,11 @@
 //!     0.0, 0.0, 0.0, 1.0,
 //! ]).unwrap();
 //!
-//! let output = affine_transform_3d_f32(&input.view(), &matrix.view(), 0.0);
+//! // Same shape as input
+//! let output = affine_transform_3d_f32(&input.view(), &matrix.view(), None, 0.0);
+//!
+//! // Custom output shape
+//! let output = affine_transform_3d_f32(&input.view(), &matrix.view(), Some((50, 50, 50)), 0.0);
 //! ```
 
 pub mod scalar;
@@ -194,6 +198,7 @@ impl Interpolate for f32 {
 ///
 /// * `input` - 3D input array
 /// * `homogeneous_matrix` - 4x4 homogeneous transformation matrix
+/// * `output_shape` - Optional output shape (z, y, x). If None, uses input shape.
 /// * `cval` - Constant value for out-of-bounds coordinates
 ///
 /// # Example
@@ -211,16 +216,22 @@ impl Interpolate for f32 {
 ///     0.0, 0.0, 0.0, 1.0,
 /// ]).unwrap();
 ///
-/// let output = affine_transform_3d_f32(&input.view(), &matrix.view(), 0.0);
+/// // Same shape as input
+/// let output = affine_transform_3d_f32(&input.view(), &matrix.view(), None, 0.0);
+///
+/// // Custom output shape
+/// let output = affine_transform_3d_f32(&input.view(), &matrix.view(), Some((50, 50, 50)), 0.0);
 /// ```
 #[inline]
 pub fn affine_transform_3d_f32(
     input: &ArrayView3<f32>,
     homogeneous_matrix: &ArrayView2<f64>,
+    output_shape: Option<(usize, usize, usize)>,
     cval: f64,
 ) -> Array3<f32> {
     let (matrix, shift) = AffineMatrix3D::from_homogeneous(homogeneous_matrix);
-    affine_transform_3d_f32_internal(input, &matrix, &shift, cval)
+    let shape = output_shape.unwrap_or_else(|| input.dim());
+    affine_transform_3d_f32_internal(input, &matrix, &shift, shape, cval)
 }
 
 /// Internal implementation that takes decomposed matrix and shift
@@ -229,10 +240,10 @@ fn affine_transform_3d_f32_internal(
     input: &ArrayView3<f32>,
     matrix: &AffineMatrix3D,
     shift: &[f64; 3],
+    output_shape: (usize, usize, usize),
     cval: f64,
 ) -> Array3<f32> {
-    let shape = input.dim();
-    let mut output = Array3::from_elem(shape, cval as f32);
+    let mut output = Array3::from_elem(output_shape, cval as f32);
 
     #[cfg(target_arch = "x86_64")]
     {
@@ -279,15 +290,18 @@ fn affine_transform_3d_f32_internal(
 ///
 /// * `input` - 3D input array (f16)
 /// * `homogeneous_matrix` - 4x4 homogeneous transformation matrix
+/// * `output_shape` - Optional output shape (z, y, x). If None, uses input shape.
 /// * `cval` - Constant value for out-of-bounds coordinates
 #[inline]
 pub fn affine_transform_3d_f16(
     input: &ArrayView3<f16>,
     homogeneous_matrix: &ArrayView2<f64>,
+    output_shape: Option<(usize, usize, usize)>,
     cval: f64,
 ) -> Array3<f16> {
     let (matrix, shift) = AffineMatrix3D::from_homogeneous(homogeneous_matrix);
-    affine_transform_3d_f16_internal(input, &matrix, &shift, cval)
+    let shape = output_shape.unwrap_or_else(|| input.dim());
+    affine_transform_3d_f16_internal(input, &matrix, &shift, shape, cval)
 }
 
 /// Internal implementation that takes decomposed matrix and shift
@@ -296,10 +310,10 @@ fn affine_transform_3d_f16_internal(
     input: &ArrayView3<f16>,
     matrix: &AffineMatrix3D,
     shift: &[f64; 3],
+    output_shape: (usize, usize, usize),
     cval: f64,
 ) -> Array3<f16> {
-    let shape = input.dim();
-    let mut output = Array3::from_elem(shape, f16::from_f64(cval));
+    let mut output = Array3::from_elem(output_shape, f16::from_f64(cval));
 
     #[cfg(target_arch = "x86_64")]
     {
@@ -353,15 +367,18 @@ fn affine_transform_3d_f16_internal(
 ///
 /// * `input` - 3D input array (u8)
 /// * `homogeneous_matrix` - 4x4 homogeneous transformation matrix
+/// * `output_shape` - Optional output shape (z, y, x). If None, uses input shape.
 /// * `cval` - Constant value for out-of-bounds coordinates
 #[inline]
 pub fn affine_transform_3d_u8(
     input: &ArrayView3<u8>,
     homogeneous_matrix: &ArrayView2<f64>,
+    output_shape: Option<(usize, usize, usize)>,
     cval: u8,
 ) -> Array3<u8> {
     let (matrix, shift) = AffineMatrix3D::from_homogeneous(homogeneous_matrix);
-    affine_transform_3d_u8_internal(input, &matrix, &shift, cval)
+    let shape = output_shape.unwrap_or_else(|| input.dim());
+    affine_transform_3d_u8_internal(input, &matrix, &shift, shape, cval)
 }
 
 /// Internal implementation that takes decomposed matrix and shift
@@ -370,10 +387,10 @@ fn affine_transform_3d_u8_internal(
     input: &ArrayView3<u8>,
     matrix: &AffineMatrix3D,
     shift: &[f64; 3],
+    output_shape: (usize, usize, usize),
     cval: u8,
 ) -> Array3<u8> {
-    let shape = input.dim();
-    let mut output = Array3::from_elem(shape, cval);
+    let mut output = Array3::from_elem(output_shape, cval);
 
     #[cfg(target_arch = "x86_64")]
     {
@@ -460,7 +477,7 @@ mod tests {
         let input = Array3::from_shape_fn((10, 10, 10), |(z, y, x)| (z * 100 + y * 10 + x) as f32);
         let matrix = identity_homogeneous();
 
-        let output = affine_transform_3d_f32(&input.view(), &matrix.view(), 0.0);
+        let output = affine_transform_3d_f32(&input.view(), &matrix.view(), None, 0.0);
 
         for z in 1..9 {
             for y in 1..9 {
@@ -476,7 +493,7 @@ mod tests {
         let input = Array3::from_shape_fn((20, 20, 20), |(z, y, x)| (z + y + x) as f32);
         let matrix = translation_homogeneous(1.0, 1.0, 1.0);
 
-        let output = affine_transform_3d_f32(&input.view(), &matrix.view(), 0.0);
+        let output = affine_transform_3d_f32(&input.view(), &matrix.view(), None, 0.0);
 
         for z in 2..17 {
             for y in 2..17 {
@@ -486,6 +503,23 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_custom_output_shape() {
+        let input = Array3::from_shape_fn((20, 20, 20), |(z, y, x)| (z + y + x) as f32);
+        let matrix = identity_homogeneous();
+
+        // Smaller output
+        let output = affine_transform_3d_f32(&input.view(), &matrix.view(), Some((10, 10, 10)), 0.0);
+        assert_eq!(output.dim(), (10, 10, 10));
+
+        // Larger output (edges will be cval)
+        let output =
+            affine_transform_3d_f32(&input.view(), &matrix.view(), Some((30, 30, 30)), -1.0);
+        assert_eq!(output.dim(), (30, 30, 30));
+        // Check that out-of-bounds values are cval
+        assert_eq!(output[[25, 25, 25]], -1.0);
     }
 
     #[test]

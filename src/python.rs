@@ -119,6 +119,7 @@ fn build_info(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
 /// Args:
 ///     input: 3D numpy array (f32)
 ///     matrix: 4x4 homogeneous transformation matrix
+///     output_shape: Optional output shape (z, y, x). If None, uses input shape.
 ///     cval: Constant value for out-of-bounds (default: 0.0)
 ///     order: Interpolation order (only 1 is supported)
 ///
@@ -131,11 +132,12 @@ fn build_info(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
 /// Returns:
 ///     Transformed 3D array
 #[pyfunction]
-#[pyo3(signature = (input, matrix, cval=0.0, order=1))]
+#[pyo3(signature = (input, matrix, output_shape=None, cval=0.0, order=1))]
 fn affine_transform<'py>(
     py: Python<'py>,
     input: PyReadonlyArray3<'py, f32>,
     matrix: PyReadonlyArray2<'py, f64>,
+    output_shape: Option<(usize, usize, usize)>,
     cval: f64,
     order: i32,
 ) -> PyResult<Bound<'py, PyArray3<f32>>> {
@@ -154,7 +156,7 @@ fn affine_transform<'py>(
 
     let input_array = input.as_array();
     let matrix_array = matrix.as_array();
-    let output = affine_transform_3d_f32(&input_array, &matrix_array, cval);
+    let output = affine_transform_3d_f32(&input_array, &matrix_array, output_shape, cval);
 
     Ok(output.into_pyarray(py))
 }
@@ -168,16 +170,18 @@ fn affine_transform<'py>(
 /// Args:
 ///     input: 3D numpy array (float16, passed as u16)
 ///     matrix: 4x4 homogeneous transformation matrix
+///     output_shape: Optional output shape (z, y, x). If None, uses input shape.
 ///     cval: Constant value for out-of-bounds (default: 0.0)
 ///     order: Interpolation order (only 1 is supported)
 ///
 /// Note: numpy float16 is stored as u16 bits, same as half::f16
 #[pyfunction]
-#[pyo3(signature = (input, matrix, cval=0.0, order=1))]
+#[pyo3(signature = (input, matrix, output_shape=None, cval=0.0, order=1))]
 fn affine_transform_f16<'py>(
     py: Python<'py>,
     input: PyReadonlyArray3<'py, u16>, // numpy float16 stored as u16
     matrix: PyReadonlyArray2<'py, f64>,
+    output_shape: Option<(usize, usize, usize)>,
     cval: f64,
     order: i32,
 ) -> PyResult<Bound<'py, PyArray3<u16>>> {
@@ -194,8 +198,8 @@ fn affine_transform_f16<'py>(
         ));
     }
 
-    let shape = input.shape();
-    let (d, h, w) = (shape[0], shape[1], shape[2]);
+    let input_shape = input.shape();
+    let (d, h, w) = (input_shape[0], input_shape[1], input_shape[2]);
     let input_slice = input.as_slice()?;
 
     // Reinterpret u16 as f16
@@ -207,13 +211,14 @@ fn affine_transform_f16<'py>(
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Shape error: {}", e)))?;
 
     let matrix_array = matrix.as_array();
-    let output = affine_transform_3d_f16(&input_array, &matrix_array, cval);
+    let output = affine_transform_3d_f16(&input_array, &matrix_array, output_shape, cval);
 
     // Reinterpret f16 output as u16 for numpy
+    let out_shape = output.dim();
     let output_u16: Array3<u16> = unsafe {
         let ptr = output.as_ptr() as *const u16;
         let slice = std::slice::from_raw_parts(ptr, output.len());
-        Array3::from_shape_vec((d, h, w), slice.to_vec()).unwrap()
+        Array3::from_shape_vec(out_shape, slice.to_vec()).unwrap()
     };
 
     Ok(output_u16.into_pyarray(py))
@@ -231,16 +236,18 @@ fn affine_transform_f16<'py>(
 /// Args:
 ///     input: 3D numpy array (uint8)
 ///     matrix: 4x4 homogeneous transformation matrix
+///     output_shape: Optional output shape (z, y, x). If None, uses input shape.
 ///     cval: Constant value for out-of-bounds (default: 0)
 ///
 /// Returns:
 ///     Transformed 3D array (uint8)
 #[pyfunction]
-#[pyo3(signature = (input, matrix, cval=0))]
+#[pyo3(signature = (input, matrix, output_shape=None, cval=0))]
 fn affine_transform_u8<'py>(
     py: Python<'py>,
     input: PyReadonlyArray3<'py, u8>,
     matrix: PyReadonlyArray2<'py, f64>,
+    output_shape: Option<(usize, usize, usize)>,
     cval: u8,
 ) -> PyResult<Bound<'py, PyArray3<u8>>> {
     let shape = matrix.shape();
@@ -252,7 +259,7 @@ fn affine_transform_u8<'py>(
 
     let input_array = input.as_array();
     let matrix_array = matrix.as_array();
-    let output = affine_transform_3d_u8(&input_array, &matrix_array, cval);
+    let output = affine_transform_3d_u8(&input_array, &matrix_array, output_shape, cval);
 
     Ok(output.into_pyarray(py))
 }
