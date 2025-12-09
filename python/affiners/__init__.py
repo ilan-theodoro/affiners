@@ -102,22 +102,27 @@ def __getattr__(name):
 
 def zoom(
     input: NDArray,
-    zoom_factor: float | Sequence[float],
+    zoom_factor: float | Sequence[float] | None = None,
     output_shape: tuple[int, int, int] | None = None,
     align_corners: bool = False,
     cval: float = 0.0,
     order: int = 1,
 ) -> NDArray:
     """
-    Zoom (scale) a 3D array by the specified factor(s).
+    Zoom (scale) a 3D array by the specified factor(s) or to a target shape.
+
+    Provide exactly one of `zoom_factor` or `output_shape` (like PyTorch's
+    `F.interpolate` with `scale_factor` vs `size`).
 
     Args:
         input: 3D numpy array (float32, float16, or uint8)
         zoom_factor: Zoom factor(s). Can be a single number (uniform zoom)
                     or a sequence of 3 numbers (z, y, x zoom factors).
                     Values > 1 enlarge the image, < 1 shrink it.
-        output_shape: Output shape (z, y, x). If None, computed as
-                     input_shape * zoom_factor.
+                    Mutually exclusive with output_shape.
+        output_shape: Target output shape (z, y, x). The input will be
+                     resampled to this exact shape.
+                     Mutually exclusive with zoom_factor.
         align_corners: If True, corner pixels are aligned (like PyTorch
                       align_corners=True). Maps the corner pixels of input
                       and output to each other.
@@ -134,14 +139,20 @@ def zoom(
         >>> import affiners
         >>> data = np.random.rand(32, 32, 32).astype(np.float32)
         >>>
-        >>> # Zoom by 2x uniformly
-        >>> zoomed = affiners.zoom(data, 2.0)  # shape: (64, 64, 64)
+        >>> # Zoom by 2x uniformly (enlarge)
+        >>> zoomed = affiners.zoom(data, zoom_factor=2.0)  # shape: (64, 64, 64)
+        >>>
+        >>> # Zoom by 0.5x (shrink)
+        >>> shrunk = affiners.zoom(data, zoom_factor=0.5)  # shape: (16, 16, 16)
         >>>
         >>> # Zoom by different factors per axis
-        >>> zoomed = affiners.zoom(data, (2.0, 1.5, 3.0))
+        >>> zoomed = affiners.zoom(data, zoom_factor=(2.0, 1.5, 3.0))
         >>>
-        >>> # Zoom with corner alignment (PyTorch-style align_corners=True)
-        >>> zoomed = affiners.zoom(data, 2.0, align_corners=True)
+        >>> # Resample to a specific output shape
+        >>> resampled = affiners.zoom(data, output_shape=(64, 48, 96))
+        >>>
+        >>> # With corner alignment (PyTorch-style align_corners=True)
+        >>> zoomed = affiners.zoom(data, zoom_factor=2.0, align_corners=True)
 
     Notes:
         The align_corners flag mimics PyTorch's behavior:
@@ -155,24 +166,34 @@ def zoom(
           as spanning [0, N-1] and output as spanning [0, M-1], mapping corners
           exactly to corners.
     """
-    # Handle zoom_factor
-    if isinstance(zoom_factor, (int, float)):
-        zoom_factors: tuple[float, float, float] = (float(zoom_factor),) * 3
-    else:
-        zf_list = list(zoom_factor)
-        if len(zf_list) != 3:
-            raise ValueError(
-                f"zoom_factor must be a scalar or length-3 sequence, got {len(zf_list)}"
-            )
-        zoom_factors = (float(zf_list[0]), float(zf_list[1]), float(zf_list[2]))
+    # Validate that exactly one of zoom_factor or output_shape is provided
+    if zoom_factor is None and output_shape is None:
+        raise ValueError("Must provide either zoom_factor or output_shape")
+    if zoom_factor is not None and output_shape is not None:
+        raise ValueError(
+            "Cannot provide both zoom_factor and output_shape. "
+            "Use zoom_factor to scale by a factor, or output_shape to resample "
+            "to a specific size."
+        )
 
     # Validate input
     if input.ndim != 3:
         raise ValueError(f"Input must be 3D, got {input.ndim}D")
     in_shape = input.shape
 
-    # Compute output shape if not provided
+    # Compute output shape from zoom_factor if needed
     if output_shape is None:
+        assert zoom_factor is not None  # for type checker
+        if isinstance(zoom_factor, (int, float)):
+            zoom_factors: tuple[float, float, float] = (float(zoom_factor),) * 3
+        else:
+            zf_list = list(zoom_factor)
+            if len(zf_list) != 3:
+                raise ValueError(
+                    f"zoom_factor must be a scalar or length-3 sequence, got {len(zf_list)}"
+                )
+            zoom_factors = (float(zf_list[0]), float(zf_list[1]), float(zf_list[2]))
+
         output_shape = (
             int(round(in_shape[0] * zoom_factors[0])),
             int(round(in_shape[1] * zoom_factors[1])),
