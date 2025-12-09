@@ -111,23 +111,17 @@ def zoom(
     """
     Zoom (scale) a 3D array by the specified factor(s) or to a target shape.
 
-    Provide exactly one of `zoom_factor` or `output_shape` (like PyTorch's
-    `F.interpolate` with `scale_factor` vs `size`).
+    Provide exactly one of `zoom_factor` or `output_shape`.
 
     Args:
         input: 3D numpy array (float32, float16, or uint8)
         zoom_factor: Zoom factor(s). Can be a single number (uniform zoom)
                     or a sequence of 3 numbers (z, y, x zoom factors).
                     Values > 1 enlarge the image, < 1 shrink it.
-                    Mutually exclusive with output_shape.
-        output_shape: Target output shape (z, y, x). The input will be
-                     resampled to this exact shape.
-                     Mutually exclusive with zoom_factor.
-        align_corners: If True, corner pixels are aligned (like PyTorch
-                      align_corners=True). Maps the corner pixels of input
-                      and output to each other.
-                      If False (default), uses pixel-center interpolation
-                      (like PyTorch align_corners=False).
+        output_shape: Target output shape (z, y, x).
+        align_corners: If True, corner pixels are aligned (maps [0, N-1] to
+                      [0, M-1]). If False (default), uses simple scaling
+                      (maps [0, N] to [0, M]).
         cval: Constant value for out-of-bounds (default: 0.0)
         order: Interpolation order (only 1 is supported)
 
@@ -151,20 +145,8 @@ def zoom(
         >>> # Resample to a specific output shape
         >>> resampled = affiners.zoom(data, output_shape=(64, 48, 96))
         >>>
-        >>> # With corner alignment (PyTorch-style align_corners=True)
+        >>> # With corner alignment
         >>> zoomed = affiners.zoom(data, zoom_factor=2.0, align_corners=True)
-
-    Notes:
-        The align_corners flag mimics PyTorch's behavior:
-
-        - align_corners=False (default): Pixel values are interpolated as if
-          they are located at pixel centers (0.5, 1.5, 2.5, ...). This treats
-          the input as spanning [0, N] and output as spanning [0, M].
-          Out-of-bounds coordinates are clamped (matching PyTorch).
-
-        - align_corners=True: Corner pixels are aligned. This treats the input
-          as spanning [0, N-1] and output as spanning [0, M-1], mapping corners
-          exactly to corners.
     """
     # Validate that exactly one of zoom_factor or output_shape is provided
     if zoom_factor is None and output_shape is None:
@@ -200,80 +182,33 @@ def zoom(
             int(round(in_shape[2] * zoom_factors[2])),
         )
 
-    if align_corners:
-        # Corner alignment: map [0, M-1] → [0, N-1]
-        # For output o, input i = o * (N-1)/(M-1)
-        scales: list[float] = []
-        offsets: list[float] = []
-
-        for i in range(3):
-            N = in_shape[i]
-            M = output_shape[i]
-            if M == 1:
-                scale = 1.0
-            else:
-                scale = (N - 1) / (M - 1)
-            scales.append(scale)
-            offsets.append(0.0)
-
-        matrix = np.array(
-            [
-                [scales[0], 0, 0, offsets[0]],
-                [0, scales[1], 0, offsets[1]],
-                [0, 0, scales[2], offsets[2]],
-                [0, 0, 0, 1.0],
-            ],
-            dtype=np.float64,
-        )
-
-        return affine_transform(
-            input, matrix, output_shape=output_shape, cval=cval, order=order
-        )
-    else:
-        # Pixel-center alignment (align_corners=False)
-        # PyTorch formula: input = (output + 0.5) * (N/M) - 0.5
-        # PyTorch clamps out-of-bounds coordinates to [0, N-1]
-        #
-        # To simulate clamping, we pad the input with edge replication
-        # and adjust coordinates to account for the padding.
-        pad_width = 1
-
-        # Pad input with edge replication
-        padded_input = np.pad(input, pad_width, mode="edge")
-
-        # Compute scales and offsets for the padded input
-        # Original formula: input = (output + 0.5) * (N/M) - 0.5
-        # With padding of 1, coordinates shift by 1:
-        # padded_input = input + 1 = (output + 0.5) * (N/M) - 0.5 + 1
-        #              = output * (N/M) + 0.5 * (N/M) + 0.5
-        scales = []
-        offsets = []
-
-        for i in range(3):
-            N = in_shape[i]
-            M = output_shape[i]
+    # Compute scale factors
+    scales: list[float] = []
+    for i in range(3):
+        N = in_shape[i]
+        M = output_shape[i]
+        if align_corners:
+            # Corner alignment: map [0, M-1] → [0, N-1]
+            scale = (N - 1) / (M - 1) if M > 1 else 1.0
+        else:
+            # Simple scaling: map [0, M] → [0, N]
             scale = N / M
-            # offset = 0.5 * (N/M) - 0.5 + pad_width
-            #        = 0.5 * scale - 0.5 + 1
-            #        = 0.5 * scale + 0.5
-            #        = 0.5 * (scale + 1)
-            offset = 0.5 * (scale + 1.0)
-            scales.append(scale)
-            offsets.append(offset)
+        scales.append(scale)
 
-        matrix = np.array(
-            [
-                [scales[0], 0, 0, offsets[0]],
-                [0, scales[1], 0, offsets[1]],
-                [0, 0, scales[2], offsets[2]],
-                [0, 0, 0, 1.0],
-            ],
-            dtype=np.float64,
-        )
+    # Build affine matrix (no offset needed for either mode)
+    matrix = np.array(
+        [
+            [scales[0], 0, 0, 0],
+            [0, scales[1], 0, 0],
+            [0, 0, scales[2], 0],
+            [0, 0, 0, 1.0],
+        ],
+        dtype=np.float64,
+    )
 
-        return affine_transform(
-            padded_input, matrix, output_shape=output_shape, cval=cval, order=order
-        )
+    return affine_transform(
+        input, matrix, output_shape=output_shape, cval=cval, order=order
+    )
 
 
 __all__ = [
