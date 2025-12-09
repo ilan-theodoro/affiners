@@ -26,16 +26,22 @@ Example:
     >>>
     >>> # Zoom by 2x
     >>> zoomed = affiners.zoom(data_f32, 2.0)
+    >>>
+    >>> # Ensure SIMD is being used (raises if scalar fallback is triggered)
+    >>> with affiners.disable_scalar_fallback():
+    ...     result = affiners.affine_transform(data_f32, matrix)
 """
 
 from __future__ import annotations
 
-from typing import Sequence
+from contextlib import contextmanager
+from typing import Generator, Sequence
 
 import numpy as np
 from numpy.typing import NDArray
 
 from .affiners import (
+    _set_scalar_fallback_allowed,
     affine_transform,
     affine_transform_f32,
     affine_transform_f16,
@@ -47,6 +53,44 @@ from .affiners import (
 # Get version and build info
 _info = build_info()
 __version__ = _info["version"]
+
+
+@contextmanager
+def disable_scalar_fallback() -> Generator[None, None, None]:
+    """
+    Context manager to disable scalar fallback and ensure SIMD code paths are used.
+
+    When this context manager is active, any operation that would fall back to
+    scalar code (due to missing SIMD support) will raise a RuntimeError instead.
+
+    This is useful for:
+    - Ensuring performance-critical code paths use SIMD optimizations
+    - Debugging to verify which code path is being taken
+    - Testing that SIMD implementations are available on the target hardware
+
+    Example:
+        >>> import numpy as np
+        >>> import affiners
+        >>> data = np.random.rand(32, 32, 32).astype(np.float32)
+        >>> matrix = np.eye(4)
+        >>>
+        >>> # This will raise if SIMD is not available
+        >>> with affiners.disable_scalar_fallback():
+        ...     result = affiners.affine_transform(data, matrix)
+
+    Raises:
+        RuntimeError: If an operation attempts to use scalar fallback while
+                     this context is active.
+
+    Notes:
+        - The flag is thread-local, so it only affects the current thread.
+        - Nested contexts are supported; the flag is restored when exiting.
+    """
+    _set_scalar_fallback_allowed(False)
+    try:
+        yield
+    finally:
+        _set_scalar_fallback_allowed(True)
 
 
 def __getattr__(name):
@@ -218,5 +262,6 @@ __all__ = [
     "affine_transform_u8",
     "apply_warp",
     "build_info",
+    "disable_scalar_fallback",
     "zoom",
 ]

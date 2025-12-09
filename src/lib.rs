@@ -31,9 +31,45 @@
 //! let output = affine_transform_3d_f32(&input.view(), &matrix.view(), Some((50, 50, 50)), 0.0);
 //! ```
 
+use std::cell::Cell;
+
 pub mod scalar;
 pub mod simd;
 pub mod warp;
+
+// =============================================================================
+// Scalar Fallback Control
+// =============================================================================
+
+thread_local! {
+    /// Thread-local flag to control whether scalar fallback is allowed.
+    /// Default is true (scalar fallback is allowed).
+    static SCALAR_FALLBACK_ALLOWED: Cell<bool> = const { Cell::new(true) };
+}
+
+/// Set whether scalar fallback is allowed for the current thread.
+/// 
+/// When set to false, any attempt to use scalar fallback will panic.
+/// This is useful for ensuring SIMD code paths are being used.
+pub fn set_scalar_fallback_allowed(allowed: bool) {
+    SCALAR_FALLBACK_ALLOWED.with(|flag| flag.set(allowed));
+}
+
+/// Check if scalar fallback is allowed, panic if not.
+/// 
+/// Call this before any scalar fallback code path.
+#[inline]
+pub fn check_scalar_fallback(operation: &str) {
+    SCALAR_FALLBACK_ALLOWED.with(|flag| {
+        if !flag.get() {
+            panic!(
+                "Scalar fallback is disabled but no SIMD implementation is available for '{}'. \
+                 This CPU may not support the required SIMD instructions (AVX2/AVX512).",
+                operation
+            );
+        }
+    });
+}
 
 #[cfg(feature = "python")]
 mod python;
@@ -278,6 +314,7 @@ fn affine_transform_3d_f32_internal(
         }
     }
 
+    check_scalar_fallback("affine_transform_3d_f32");
     scalar::trilinear_3d_scalar(input, &mut output.view_mut(), matrix, shift, cval);
     output
 }
@@ -351,6 +388,7 @@ fn affine_transform_3d_f16_internal(
         }
     }
 
+    check_scalar_fallback("affine_transform_3d_f16");
     scalar::trilinear_3d_f16_scalar(input, &mut output.view_mut(), matrix, shift, cval);
     output
 }
@@ -412,6 +450,7 @@ fn affine_transform_3d_u8_internal(
         }
     }
 
+    check_scalar_fallback("affine_transform_3d_u8");
     scalar::trilinear_3d_u8_scalar(input, &mut output.view_mut(), matrix, shift, cval);
     output
 }

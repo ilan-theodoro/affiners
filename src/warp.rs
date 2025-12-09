@@ -252,6 +252,7 @@ pub fn apply_warp_3d_f32(
     }
 
     // Scalar fallback
+    crate::check_scalar_fallback("apply_warp_3d_f32");
     crate::scalar::apply_warp_3d_f32_scalar(image, warp_field, &mut output.view_mut(), cval);
     output
 }
@@ -309,6 +310,7 @@ pub fn apply_warp_3d_f16(
     }
 
     // Scalar fallback
+    crate::check_scalar_fallback("apply_warp_3d_f16");
     crate::scalar::apply_warp_3d_f16_scalar(image, warp_field, &mut output.view_mut(), cval);
     output
 }
@@ -363,6 +365,7 @@ pub fn apply_warp_3d_u8(
     }
 
     // Scalar fallback
+    crate::check_scalar_fallback("apply_warp_3d_u8");
     crate::scalar::apply_warp_3d_u8_scalar(image, warp_field, &mut output.view_mut(), cval);
     output
 }

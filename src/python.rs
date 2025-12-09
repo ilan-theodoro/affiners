@@ -6,7 +6,7 @@ use numpy::{IntoPyArray, PyArray3, PyReadonlyArray2, PyReadonlyArray3, PyUntyped
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-use crate::{affine_transform_3d_f16, affine_transform_3d_f32, affine_transform_3d_u8, apply_warp_3d_f32, upsample_warp_field_2x};
+use crate::{affine_transform_3d_f16, affine_transform_3d_f32, affine_transform_3d_u8, apply_warp_3d_f32, upsample_warp_field_2x, set_scalar_fallback_allowed};
 
 // =============================================================================
 // Helper functions
@@ -454,6 +454,21 @@ fn apply_warp<'py>(
 }
 
 // =============================================================================
+// Scalar Fallback Control
+// =============================================================================
+
+/// Set whether scalar fallback is allowed (internal use)
+/// 
+/// When set to False, any attempt to use scalar fallback will raise a RuntimeError.
+/// This is useful for ensuring SIMD code paths are being used.
+///
+/// Use the `disable_scalar_fallback()` context manager instead of calling this directly.
+#[pyfunction]
+fn _set_scalar_fallback_allowed(allowed: bool) {
+    set_scalar_fallback_allowed(allowed);
+}
+
+// =============================================================================
 // Module registration
 // =============================================================================
 
@@ -487,5 +502,8 @@ fn affiners(m: &Bound<'_, PyModule>) -> PyResult<()> {
     
     // Utilities
     m.add_function(wrap_pyfunction!(build_info, m)?)?;
+    
+    // Internal functions for scalar fallback control
+    m.add_function(wrap_pyfunction!(_set_scalar_fallback_allowed, m)?)?;
     Ok(())
 }
