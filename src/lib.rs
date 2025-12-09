@@ -33,12 +33,16 @@
 
 pub mod scalar;
 pub mod simd;
+pub mod warp;
 
 #[cfg(feature = "python")]
 mod python;
 
 pub use half::f16;
 use ndarray::{Array3, ArrayView2, ArrayView3};
+
+// Re-export warp functions
+pub use warp::{apply_warp_3d_f16, apply_warp_3d_f32, apply_warp_3d_u8, upsample_warp_field_2x};
 
 /// 3x3 affine transformation matrix (row-major)
 ///

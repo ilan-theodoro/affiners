@@ -6,7 +6,7 @@ use numpy::{IntoPyArray, PyArray3, PyReadonlyArray2, PyReadonlyArray3, PyUntyped
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-use crate::{affine_transform_3d_f16, affine_transform_3d_f32, affine_transform_3d_u8};
+use crate::{affine_transform_3d_f16, affine_transform_3d_f32, affine_transform_3d_u8, apply_warp_3d_f32, upsample_warp_field_2x};
 
 // =============================================================================
 // Helper functions
@@ -390,6 +390,70 @@ fn affine_transform_u8<'py>(
 }
 
 // =============================================================================
+// Warp field functions
+// =============================================================================
+
+use numpy::PyReadonlyArray4;
+
+/// Apply a 3D warp field to an image using trilinear interpolation
+///
+/// This is a CPU implementation equivalent to dexpv2's CUDA `apply_warp` function.
+///
+/// Args:
+///     image: 3D numpy array (float32) - the image to be warped
+///     warp_field: 4D numpy array (float32) with shape (channels, d, h, w)
+///         - Channel 0: Z displacement (dz)
+///         - Channel 1: Y displacement (dy)
+///         - Channel 2: X displacement (dx)
+///         - Channel 3+ (optional): Score or other data (ignored)
+///     cval: Constant value for out-of-bounds coordinates (default: 0.0)
+///     upsample: Whether to upsample the warp field by 2x before warping (default: True)
+///               This matches dexpv2's default behavior.
+///
+/// Returns:
+///     Warped 3D array (float32) with same shape as input image
+///
+/// Notes:
+///     The warping uses the convention: src_coord = out_coord - displacement
+///     This matches dexpv2's CUDA implementation.
+///
+/// Example:
+///     >>> import numpy as np
+///     >>> from affiners import apply_warp
+///     >>> image = np.random.rand(100, 100, 100).astype(np.float32)
+///     >>> warp_field = np.zeros((4, 10, 10, 10), dtype=np.float32)  # identity
+///     >>> warped = apply_warp(image, warp_field)
+#[pyfunction]
+#[pyo3(signature = (image, warp_field, cval=0.0, upsample=true))]
+fn apply_warp<'py>(
+    py: Python<'py>,
+    image: PyReadonlyArray3<'py, f32>,
+    warp_field: PyReadonlyArray4<'py, f32>,
+    cval: f32,
+    upsample: bool,
+) -> PyResult<Bound<'py, PyArray3<f32>>> {
+    let wf_input = warp_field.as_array();
+    
+    if wf_input.shape()[0] < 3 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            format!("Warp field must have at least 3 channels (dz, dy, dx), got {}", wf_input.shape()[0])
+        ));
+    }
+
+    let image_array = image.as_array();
+    
+    let output = if upsample {
+        // Upsample warp field by 2x in spatial dimensions using Rust implementation
+        let upsampled = upsample_warp_field_2x(&wf_input);
+        apply_warp_3d_f32(&image_array, &upsampled.view(), cval)
+    } else {
+        apply_warp_3d_f32(&image_array, &wf_input, cval)
+    };
+
+    Ok(output.into_pyarray(py))
+}
+
+// =============================================================================
 // Module registration
 // =============================================================================
 
@@ -417,6 +481,9 @@ fn affiners(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(affine_transform_f32, m)?)?;
     m.add_function(wrap_pyfunction!(affine_transform_f16, m)?)?;
     m.add_function(wrap_pyfunction!(affine_transform_u8, m)?)?;
+    
+    // Warp field functions
+    m.add_function(wrap_pyfunction!(apply_warp, m)?)?;
     
     // Utilities
     m.add_function(wrap_pyfunction!(build_info, m)?)?;

@@ -691,6 +691,577 @@ pub fn trilinear_3d_u8_scalar(
     }
 }
 
+// =============================================================================
+// Warp Field Scalar Implementations
+// =============================================================================
+
+use ndarray::ArrayView4;
+
+/// Scalar implementation of apply_warp for f32
+#[allow(clippy::too_many_arguments)]
+pub fn apply_warp_3d_f32_scalar(
+    image: &ArrayView3<f32>,
+    warp_field: &ArrayView4<f32>,
+    output: &mut ArrayViewMut3<f32>,
+    cval: f32,
+) {
+    let (img_d, img_h, img_w) = image.dim();
+    let (_wf_channels, wf_d, wf_h, wf_w) = warp_field.dim();
+
+    // CUDA texture coordinate convention with normalize_coords=True:
+    // u = pixel / img_size maps to texture position u * wf_size
+    // CUDA linear filtering then applies a -0.5 offset before flooring.
+    let scale_z = wf_d as f32 / img_d as f32;
+    let scale_y = wf_h as f32 / img_h as f32;
+    let scale_x = wf_w as f32 / img_w as f32;
+
+    let image_slice = image.as_slice().expect("Image must be C-contiguous");
+    let output_slice = output.as_slice_mut().expect("Output must be C-contiguous");
+
+    // Extract warp field channels as contiguous slices
+    let wf_dz = warp_field.slice(ndarray::s![0, .., .., ..]);
+    let wf_dy = warp_field.slice(ndarray::s![1, .., .., ..]);
+    let wf_dx = warp_field.slice(ndarray::s![2, .., .., ..]);
+
+    let wf_dz_slice = wf_dz.as_slice().expect("Warp field must be C-contiguous");
+    let wf_dy_slice = wf_dy.as_slice().expect("Warp field must be C-contiguous");
+    let wf_dx_slice = wf_dx.as_slice().expect("Warp field must be C-contiguous");
+
+    let wf_stride_z = wf_h * wf_w;
+    let wf_stride_y = wf_w;
+    let img_stride_z = img_h * img_w;
+    let img_stride_y = img_w;
+
+    for oz in 0..img_d {
+        for oy in 0..img_h {
+            for ox in 0..img_w {
+                // Map output coords to warp field space with CUDA -0.5 offset
+                let wf_z = oz as f32 * scale_z - 0.5;
+                let wf_y = oy as f32 * scale_y - 0.5;
+                let wf_x = ox as f32 * scale_x - 0.5;
+
+                // Trilinearly interpolate warp field to get displacement
+                let (dz, dy, dx) = trilinear_interp_warp_field_f32(
+                    wf_dz_slice,
+                    wf_dy_slice,
+                    wf_dx_slice,
+                    wf_d,
+                    wf_h,
+                    wf_w,
+                    wf_stride_z,
+                    wf_stride_y,
+                    wf_z,
+                    wf_y,
+                    wf_x,
+                );
+
+                // Compute source coordinates (subtract displacement)
+                let src_z = oz as f32 - dz;
+                let src_y = oy as f32 - dy;
+                let src_x = ox as f32 - dx;
+
+                // Trilinearly interpolate input image at source coords
+                let value = trilinear_interp_image_warp_f32(
+                    image_slice,
+                    img_d,
+                    img_h,
+                    img_w,
+                    img_stride_z,
+                    img_stride_y,
+                    src_z,
+                    src_y,
+                    src_x,
+                    cval,
+                );
+
+                output_slice[oz * img_stride_z + oy * img_stride_y + ox] = value;
+            }
+        }
+    }
+}
+
+/// Scalar implementation of apply_warp for f16
+#[allow(clippy::too_many_arguments)]
+pub fn apply_warp_3d_f16_scalar(
+    image: &ArrayView3<f16>,
+    warp_field: &ArrayView4<f32>, // Warp field is always f32
+    output: &mut ArrayViewMut3<f16>,
+    cval: f16,
+) {
+    let (img_d, img_h, img_w) = image.dim();
+    let (_wf_channels, wf_d, wf_h, wf_w) = warp_field.dim();
+
+    let scale_z = wf_d as f32 / img_d as f32;
+    let scale_y = wf_h as f32 / img_h as f32;
+    let scale_x = wf_w as f32 / img_w as f32;
+
+    let image_slice = image.as_slice().expect("Image must be C-contiguous");
+    let output_slice = output.as_slice_mut().expect("Output must be C-contiguous");
+
+    let wf_dz = warp_field.slice(ndarray::s![0, .., .., ..]);
+    let wf_dy = warp_field.slice(ndarray::s![1, .., .., ..]);
+    let wf_dx = warp_field.slice(ndarray::s![2, .., .., ..]);
+
+    let wf_dz_slice = wf_dz.as_slice().expect("Warp field must be C-contiguous");
+    let wf_dy_slice = wf_dy.as_slice().expect("Warp field must be C-contiguous");
+    let wf_dx_slice = wf_dx.as_slice().expect("Warp field must be C-contiguous");
+
+    let wf_stride_z = wf_h * wf_w;
+    let wf_stride_y = wf_w;
+    let img_stride_z = img_h * img_w;
+    let img_stride_y = img_w;
+    let cval_f32 = cval.to_f32();
+
+    for oz in 0..img_d {
+        for oy in 0..img_h {
+            for ox in 0..img_w {
+                let wf_z = oz as f32 * scale_z - 0.5;
+                let wf_y = oy as f32 * scale_y - 0.5;
+                let wf_x = ox as f32 * scale_x - 0.5;
+
+                let (dz, dy, dx) = trilinear_interp_warp_field_f32(
+                    wf_dz_slice,
+                    wf_dy_slice,
+                    wf_dx_slice,
+                    wf_d,
+                    wf_h,
+                    wf_w,
+                    wf_stride_z,
+                    wf_stride_y,
+                    wf_z,
+                    wf_y,
+                    wf_x,
+                );
+
+                let src_z = oz as f32 - dz;
+                let src_y = oy as f32 - dy;
+                let src_x = ox as f32 - dx;
+
+                let value = trilinear_interp_image_warp_f16(
+                    image_slice,
+                    img_d,
+                    img_h,
+                    img_w,
+                    img_stride_z,
+                    img_stride_y,
+                    src_z,
+                    src_y,
+                    src_x,
+                    cval_f32,
+                );
+
+                output_slice[oz * img_stride_z + oy * img_stride_y + ox] = f16::from_f32(value);
+            }
+        }
+    }
+}
+
+/// Scalar implementation of apply_warp for u8
+#[allow(clippy::too_many_arguments)]
+pub fn apply_warp_3d_u8_scalar(
+    image: &ArrayView3<u8>,
+    warp_field: &ArrayView4<f32>, // Warp field is always f32
+    output: &mut ArrayViewMut3<u8>,
+    cval: u8,
+) {
+    let (img_d, img_h, img_w) = image.dim();
+    let (_wf_channels, wf_d, wf_h, wf_w) = warp_field.dim();
+
+    let scale_z = wf_d as f32 / img_d as f32;
+    let scale_y = wf_h as f32 / img_h as f32;
+    let scale_x = wf_w as f32 / img_w as f32;
+
+    let image_slice = image.as_slice().expect("Image must be C-contiguous");
+    let output_slice = output.as_slice_mut().expect("Output must be C-contiguous");
+
+    let wf_dz = warp_field.slice(ndarray::s![0, .., .., ..]);
+    let wf_dy = warp_field.slice(ndarray::s![1, .., .., ..]);
+    let wf_dx = warp_field.slice(ndarray::s![2, .., .., ..]);
+
+    let wf_dz_slice = wf_dz.as_slice().expect("Warp field must be C-contiguous");
+    let wf_dy_slice = wf_dy.as_slice().expect("Warp field must be C-contiguous");
+    let wf_dx_slice = wf_dx.as_slice().expect("Warp field must be C-contiguous");
+
+    let wf_stride_z = wf_h * wf_w;
+    let wf_stride_y = wf_w;
+    let img_stride_z = img_h * img_w;
+    let img_stride_y = img_w;
+    let cval_f32 = cval as f32;
+
+    for oz in 0..img_d {
+        for oy in 0..img_h {
+            for ox in 0..img_w {
+                let wf_z = oz as f32 * scale_z - 0.5;
+                let wf_y = oy as f32 * scale_y - 0.5;
+                let wf_x = ox as f32 * scale_x - 0.5;
+
+                let (dz, dy, dx) = trilinear_interp_warp_field_f32(
+                    wf_dz_slice,
+                    wf_dy_slice,
+                    wf_dx_slice,
+                    wf_d,
+                    wf_h,
+                    wf_w,
+                    wf_stride_z,
+                    wf_stride_y,
+                    wf_z,
+                    wf_y,
+                    wf_x,
+                );
+
+                let src_z = oz as f32 - dz;
+                let src_y = oy as f32 - dy;
+                let src_x = ox as f32 - dx;
+
+                let value = trilinear_interp_image_warp_u8(
+                    image_slice,
+                    img_d,
+                    img_h,
+                    img_w,
+                    img_stride_z,
+                    img_stride_y,
+                    src_z,
+                    src_y,
+                    src_x,
+                    cval_f32,
+                );
+
+                // Clamp and convert back to u8
+                output_slice[oz * img_stride_z + oy * img_stride_y + ox] =
+                    value.round().clamp(0.0, 255.0) as u8;
+            }
+        }
+    }
+}
+
+// =============================================================================
+// Warp Field Interpolation Helpers
+// =============================================================================
+
+/// Trilinearly interpolate the warp field at (z, y, x)
+#[inline]
+pub fn trilinear_interp_warp_field_f32(
+    wf_dz: &[f32],
+    wf_dy: &[f32],
+    wf_dx: &[f32],
+    d: usize,
+    h: usize,
+    w: usize,
+    stride_z: usize,
+    stride_y: usize,
+    z: f32,
+    y: f32,
+    x: f32,
+) -> (f32, f32, f32) {
+    let z0 = z.floor() as i32;
+    let y0 = y.floor() as i32;
+    let x0 = x.floor() as i32;
+
+    // Clamp to valid range
+    if z0 < 0 || z0 >= d as i32 - 1 || y0 < 0 || y0 >= h as i32 - 1 || x0 < 0 || x0 >= w as i32 - 1
+    {
+        // At boundary, clamp coordinates
+        let z_clamped = z.clamp(0.0, d as f32 - 1.0);
+        let y_clamped = y.clamp(0.0, h as f32 - 1.0);
+        let x_clamped = x.clamp(0.0, w as f32 - 1.0);
+
+        let z0 = z_clamped.floor() as usize;
+        let y0 = y_clamped.floor() as usize;
+        let x0 = x_clamped.floor() as usize;
+        let z1 = (z0 + 1).min(d - 1);
+        let y1 = (y0 + 1).min(h - 1);
+        let x1 = (x0 + 1).min(w - 1);
+
+        let fz = z_clamped - z_clamped.floor();
+        let fy = y_clamped - y_clamped.floor();
+        let fx = x_clamped - x_clamped.floor();
+
+        return interp_8_neighbors_warp(
+            wf_dz, wf_dy, wf_dx, stride_z, stride_y, z0, y0, x0, z1, y1, x1, fz, fy, fx,
+        );
+    }
+
+    let z0u = z0 as usize;
+    let y0u = y0 as usize;
+    let x0u = x0 as usize;
+    let z1u = z0u + 1;
+    let y1u = y0u + 1;
+    let x1u = x0u + 1;
+
+    let fz = z - z.floor();
+    let fy = y - y.floor();
+    let fx = x - x.floor();
+
+    interp_8_neighbors_warp(
+        wf_dz, wf_dy, wf_dx, stride_z, stride_y, z0u, y0u, x0u, z1u, y1u, x1u, fz, fy, fx,
+    )
+}
+
+#[inline]
+pub fn interp_8_neighbors_warp(
+    wf_dz: &[f32],
+    wf_dy: &[f32],
+    wf_dx: &[f32],
+    stride_z: usize,
+    stride_y: usize,
+    z0: usize,
+    y0: usize,
+    x0: usize,
+    z1: usize,
+    y1: usize,
+    x1: usize,
+    fz: f32,
+    fy: f32,
+    fx: f32,
+) -> (f32, f32, f32) {
+    let idx000 = z0 * stride_z + y0 * stride_y + x0;
+    let idx001 = z0 * stride_z + y0 * stride_y + x1;
+    let idx010 = z0 * stride_z + y1 * stride_y + x0;
+    let idx011 = z0 * stride_z + y1 * stride_y + x1;
+    let idx100 = z1 * stride_z + y0 * stride_y + x0;
+    let idx101 = z1 * stride_z + y0 * stride_y + x1;
+    let idx110 = z1 * stride_z + y1 * stride_y + x0;
+    let idx111 = z1 * stride_z + y1 * stride_y + x1;
+
+    let w000 = (1.0 - fx) * (1.0 - fy) * (1.0 - fz);
+    let w001 = fx * (1.0 - fy) * (1.0 - fz);
+    let w010 = (1.0 - fx) * fy * (1.0 - fz);
+    let w011 = fx * fy * (1.0 - fz);
+    let w100 = (1.0 - fx) * (1.0 - fy) * fz;
+    let w101 = fx * (1.0 - fy) * fz;
+    let w110 = (1.0 - fx) * fy * fz;
+    let w111 = fx * fy * fz;
+
+    let dz = wf_dz[idx000] * w000
+        + wf_dz[idx001] * w001
+        + wf_dz[idx010] * w010
+        + wf_dz[idx011] * w011
+        + wf_dz[idx100] * w100
+        + wf_dz[idx101] * w101
+        + wf_dz[idx110] * w110
+        + wf_dz[idx111] * w111;
+
+    let dy = wf_dy[idx000] * w000
+        + wf_dy[idx001] * w001
+        + wf_dy[idx010] * w010
+        + wf_dy[idx011] * w011
+        + wf_dy[idx100] * w100
+        + wf_dy[idx101] * w101
+        + wf_dy[idx110] * w110
+        + wf_dy[idx111] * w111;
+
+    let dx = wf_dx[idx000] * w000
+        + wf_dx[idx001] * w001
+        + wf_dx[idx010] * w010
+        + wf_dx[idx011] * w011
+        + wf_dx[idx100] * w100
+        + wf_dx[idx101] * w101
+        + wf_dx[idx110] * w110
+        + wf_dx[idx111] * w111;
+
+    (dz, dy, dx)
+}
+
+/// Trilinearly interpolate the f32 image at (z, y, x) for warp
+#[inline]
+pub fn trilinear_interp_image_warp_f32(
+    image: &[f32],
+    d: usize,
+    h: usize,
+    w: usize,
+    stride_z: usize,
+    stride_y: usize,
+    z: f32,
+    y: f32,
+    x: f32,
+    cval: f32,
+) -> f32 {
+    // Clamp tiny negative values to 0 (floating point precision issues)
+    let z = if z > -1e-5 && z < 0.0 { 0.0 } else { z };
+    let y = if y > -1e-5 && y < 0.0 { 0.0 } else { y };
+    let x = if x > -1e-5 && x < 0.0 { 0.0 } else { x };
+
+    let z0 = z.floor() as i32;
+    let y0 = y.floor() as i32;
+    let x0 = x.floor() as i32;
+
+    // Out of bounds check
+    if z0 < 0 || z0 >= d as i32 || y0 < 0 || y0 >= h as i32 || x0 < 0 || x0 >= w as i32 {
+        return cval;
+    }
+
+    let z0u = z0 as usize;
+    let y0u = y0 as usize;
+    let x0u = x0 as usize;
+
+    let z1u = (z0u + 1).min(d - 1);
+    let y1u = (y0u + 1).min(h - 1);
+    let x1u = (x0u + 1).min(w - 1);
+
+    let fz = z - z.floor();
+    let fy = y - y.floor();
+    let fx = x - x.floor();
+
+    let idx000 = z0u * stride_z + y0u * stride_y + x0u;
+    let idx001 = z0u * stride_z + y0u * stride_y + x1u;
+    let idx010 = z0u * stride_z + y1u * stride_y + x0u;
+    let idx011 = z0u * stride_z + y1u * stride_y + x1u;
+    let idx100 = z1u * stride_z + y0u * stride_y + x0u;
+    let idx101 = z1u * stride_z + y0u * stride_y + x1u;
+    let idx110 = z1u * stride_z + y1u * stride_y + x0u;
+    let idx111 = z1u * stride_z + y1u * stride_y + x1u;
+
+    let v000 = image[idx000];
+    let v001 = image[idx001];
+    let v010 = image[idx010];
+    let v011 = image[idx011];
+    let v100 = image[idx100];
+    let v101 = image[idx101];
+    let v110 = image[idx110];
+    let v111 = image[idx111];
+
+    v000 * (1.0 - fx) * (1.0 - fy) * (1.0 - fz)
+        + v001 * fx * (1.0 - fy) * (1.0 - fz)
+        + v010 * (1.0 - fx) * fy * (1.0 - fz)
+        + v011 * fx * fy * (1.0 - fz)
+        + v100 * (1.0 - fx) * (1.0 - fy) * fz
+        + v101 * fx * (1.0 - fy) * fz
+        + v110 * (1.0 - fx) * fy * fz
+        + v111 * fx * fy * fz
+}
+
+/// Trilinearly interpolate the f16 image at (z, y, x) for warp (internally uses f32)
+#[inline]
+pub fn trilinear_interp_image_warp_f16(
+    image: &[f16],
+    d: usize,
+    h: usize,
+    w: usize,
+    stride_z: usize,
+    stride_y: usize,
+    z: f32,
+    y: f32,
+    x: f32,
+    cval: f32,
+) -> f32 {
+    let z = if z > -1e-5 && z < 0.0 { 0.0 } else { z };
+    let y = if y > -1e-5 && y < 0.0 { 0.0 } else { y };
+    let x = if x > -1e-5 && x < 0.0 { 0.0 } else { x };
+
+    let z0 = z.floor() as i32;
+    let y0 = y.floor() as i32;
+    let x0 = x.floor() as i32;
+
+    if z0 < 0 || z0 >= d as i32 || y0 < 0 || y0 >= h as i32 || x0 < 0 || x0 >= w as i32 {
+        return cval;
+    }
+
+    let z0u = z0 as usize;
+    let y0u = y0 as usize;
+    let x0u = x0 as usize;
+
+    let z1u = (z0u + 1).min(d - 1);
+    let y1u = (y0u + 1).min(h - 1);
+    let x1u = (x0u + 1).min(w - 1);
+
+    let fz = z - z.floor();
+    let fy = y - y.floor();
+    let fx = x - x.floor();
+
+    let idx000 = z0u * stride_z + y0u * stride_y + x0u;
+    let idx001 = z0u * stride_z + y0u * stride_y + x1u;
+    let idx010 = z0u * stride_z + y1u * stride_y + x0u;
+    let idx011 = z0u * stride_z + y1u * stride_y + x1u;
+    let idx100 = z1u * stride_z + y0u * stride_y + x0u;
+    let idx101 = z1u * stride_z + y0u * stride_y + x1u;
+    let idx110 = z1u * stride_z + y1u * stride_y + x0u;
+    let idx111 = z1u * stride_z + y1u * stride_y + x1u;
+
+    let v000 = image[idx000].to_f32();
+    let v001 = image[idx001].to_f32();
+    let v010 = image[idx010].to_f32();
+    let v011 = image[idx011].to_f32();
+    let v100 = image[idx100].to_f32();
+    let v101 = image[idx101].to_f32();
+    let v110 = image[idx110].to_f32();
+    let v111 = image[idx111].to_f32();
+
+    v000 * (1.0 - fx) * (1.0 - fy) * (1.0 - fz)
+        + v001 * fx * (1.0 - fy) * (1.0 - fz)
+        + v010 * (1.0 - fx) * fy * (1.0 - fz)
+        + v011 * fx * fy * (1.0 - fz)
+        + v100 * (1.0 - fx) * (1.0 - fy) * fz
+        + v101 * fx * (1.0 - fy) * fz
+        + v110 * (1.0 - fx) * fy * fz
+        + v111 * fx * fy * fz
+}
+
+/// Trilinearly interpolate the u8 image at (z, y, x) for warp (returns f32 for precision)
+#[inline]
+pub fn trilinear_interp_image_warp_u8(
+    image: &[u8],
+    d: usize,
+    h: usize,
+    w: usize,
+    stride_z: usize,
+    stride_y: usize,
+    z: f32,
+    y: f32,
+    x: f32,
+    cval: f32,
+) -> f32 {
+    let z = if z > -1e-5 && z < 0.0 { 0.0 } else { z };
+    let y = if y > -1e-5 && y < 0.0 { 0.0 } else { y };
+    let x = if x > -1e-5 && x < 0.0 { 0.0 } else { x };
+
+    let z0 = z.floor() as i32;
+    let y0 = y.floor() as i32;
+    let x0 = x.floor() as i32;
+
+    if z0 < 0 || z0 >= d as i32 || y0 < 0 || y0 >= h as i32 || x0 < 0 || x0 >= w as i32 {
+        return cval;
+    }
+
+    let z0u = z0 as usize;
+    let y0u = y0 as usize;
+    let x0u = x0 as usize;
+
+    let z1u = (z0u + 1).min(d - 1);
+    let y1u = (y0u + 1).min(h - 1);
+    let x1u = (x0u + 1).min(w - 1);
+
+    let fz = z - z.floor();
+    let fy = y - y.floor();
+    let fx = x - x.floor();
+
+    let idx000 = z0u * stride_z + y0u * stride_y + x0u;
+    let idx001 = z0u * stride_z + y0u * stride_y + x1u;
+    let idx010 = z0u * stride_z + y1u * stride_y + x0u;
+    let idx011 = z0u * stride_z + y1u * stride_y + x1u;
+    let idx100 = z1u * stride_z + y0u * stride_y + x0u;
+    let idx101 = z1u * stride_z + y0u * stride_y + x1u;
+    let idx110 = z1u * stride_z + y1u * stride_y + x0u;
+    let idx111 = z1u * stride_z + y1u * stride_y + x1u;
+
+    let v000 = image[idx000] as f32;
+    let v001 = image[idx001] as f32;
+    let v010 = image[idx010] as f32;
+    let v011 = image[idx011] as f32;
+    let v100 = image[idx100] as f32;
+    let v101 = image[idx101] as f32;
+    let v110 = image[idx110] as f32;
+    let v111 = image[idx111] as f32;
+
+    v000 * (1.0 - fx) * (1.0 - fy) * (1.0 - fz)
+        + v001 * fx * (1.0 - fy) * (1.0 - fz)
+        + v010 * (1.0 - fx) * fy * (1.0 - fz)
+        + v011 * fx * fy * (1.0 - fz)
+        + v100 * (1.0 - fx) * (1.0 - fy) * fz
+        + v101 * fx * (1.0 - fy) * fz
+        + v110 * (1.0 - fx) * fy * fz
+        + v111 * fx * fy * fz
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

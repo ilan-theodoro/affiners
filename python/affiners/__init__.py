@@ -29,6 +29,7 @@ from .affiners import (
     affine_transform_f32,
     affine_transform_f16,
     affine_transform_u8,
+    apply_warp,
     build_info,
 )
 
@@ -49,5 +50,6 @@ __all__ = [
     "affine_transform_f32",
     "affine_transform_f16",
     "affine_transform_u8",
+    "apply_warp",
     "build_info",
 ]
