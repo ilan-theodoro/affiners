@@ -27,3 +27,8 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Image Processing",
 ]
 dependencies = ["numpy>=1.20"]
+
+[tool.maturin]
+features = ["python"]
+python-source = "python"
+module-name = "affiners"
