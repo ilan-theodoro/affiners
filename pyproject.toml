@@ -4,28 +4,26 @@ build-backend = "maturin"
 
 [project]
 name = "affine-rs"
-version = "0.2.0"
+version = "0.3.1"
 description = "Fast 3D affine transformations with trilinear interpolation using AVX2/AVX512 SIMD"
 readme = "README.md"
 requires-python = ">=3.8"
-license = {text = "BSD-3-Clause"}
-authors = [
-    {name = "Ilan Theodoro"}
+license = { text = "BSD-3-Clause" }
+authors = [{ name = "Ilan Theodoro" }]
+keywords = [
+  "affine",
+  "interpolation",
+  "simd",
+  "avx2",
+  "image-processing",
+  "numpy",
 ]
-keywords = ["affine", "interpolation", "simd", "avx2", "image-processing", "numpy"]
 classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: BSD License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Rust",
-    "Topic :: Scientific/Engineering :: Image Processing",
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: BSD License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Rust",
+  "Topic :: Scientific/Engineering :: Image Processing",
 ]
-dependencies = [
-    "numpy>=1.20",
-]
-
-[tool.maturin]
-features = ["python"]
-python-source = "python"
-module-name = "affiners"
+dependencies = ["numpy>=1.20"]

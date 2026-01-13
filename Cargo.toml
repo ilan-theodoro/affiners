@@ -1,6 +1,6 @@
 [package]
 name = "affiners"
-version = "0.2.0"
+version = "0.3.1"
 edition = "2024"
 authors = ["Ilan Theodoro"]
 description = "Fast 3D affine transformations with trilinear interpolation using AVX2/AVX512 SIMD"
