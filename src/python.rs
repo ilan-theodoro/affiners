@@ -6,7 +6,7 @@ use numpy::{IntoPyArray, PyArray3, PyReadonlyArray2, PyReadonlyArray3, PyUntyped
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-use crate::{affine_transform_3d_f16, affine_transform_3d_f32, affine_transform_3d_u8, apply_warp_3d_f32, upsample_warp_field_2x, set_scalar_fallback_allowed};
+use crate::{affine_transform_3d_f16, affine_transform_3d_f32, affine_transform_3d_u8, apply_warp_3d_f16, apply_warp_3d_f32, apply_warp_3d_u8, upsample_warp_field_2x, set_scalar_fallback_allowed};
 
 // =============================================================================
 // Helper functions
@@ -398,9 +398,10 @@ use numpy::PyReadonlyArray4;
 /// Apply a 3D warp field to an image using trilinear interpolation
 ///
 /// This is a CPU implementation equivalent to dexpv2's CUDA `apply_warp` function.
+/// Automatically dispatches to the appropriate implementation based on input dtype.
 ///
 /// Args:
-///     image: 3D numpy array (float32) - the image to be warped
+///     image: 3D numpy array (float32, float16, or uint8) - the image to be warped
 ///     warp_field: 4D numpy array (float32) with shape (channels, d, h, w)
 ///         - Channel 0: Z displacement (dz)
 ///         - Channel 1: Y displacement (dy)
@@ -411,7 +412,7 @@ use numpy::PyReadonlyArray4;
 ///               This matches dexpv2's default behavior.
 ///
 /// Returns:
-///     Warped 3D array (float32) with same shape as input image
+///     Warped 3D array (same dtype as input) with same shape as input image
 ///
 /// Notes:
 ///     The warping uses the convention: src_coord = out_coord - displacement
@@ -427,30 +428,107 @@ use numpy::PyReadonlyArray4;
 #[pyo3(signature = (image, warp_field, cval=0.0, upsample=true))]
 fn apply_warp<'py>(
     py: Python<'py>,
-    image: PyReadonlyArray3<'py, f32>,
+    image: &Bound<'py, PyAny>,
     warp_field: PyReadonlyArray4<'py, f32>,
-    cval: f32,
+    cval: f64,
     upsample: bool,
-) -> PyResult<Bound<'py, PyArray3<f32>>> {
+) -> PyResult<Py<PyAny>> {
     let wf_input = warp_field.as_array();
-    
+
     if wf_input.shape()[0] < 3 {
         return Err(pyo3::exceptions::PyValueError::new_err(
             format!("Warp field must have at least 3 channels (dz, dy, dx), got {}", wf_input.shape()[0])
         ));
     }
 
-    let image_array = image.as_array();
-    
-    let output = if upsample {
-        // Upsample warp field by 2x in spatial dimensions using Rust implementation
-        let upsampled = upsample_warp_field_2x(&wf_input);
-        apply_warp_3d_f32(&image_array, &upsampled.view(), cval)
-    } else {
-        apply_warp_3d_f32(&image_array, &wf_input, cval)
-    };
+    // Get input dtype and dispatch
+    let dtype_name = get_dtype_name(image)?;
 
-    Ok(output.into_pyarray(py))
+    match dtype_name.as_str() {
+        "float32" => {
+            let image_arr: PyReadonlyArray3<'py, f32> = image.extract().map_err(|e| {
+                pyo3::exceptions::PyTypeError::new_err(format!(
+                    "Failed to extract float32 array: {}", e
+                ))
+            })?;
+            let image_array = image_arr.as_array();
+            let cval_f32 = cval as f32;
+
+            let output = if upsample {
+                let upsampled = upsample_warp_field_2x(&wf_input);
+                apply_warp_3d_f32(&image_array, &upsampled.view(), cval_f32)
+            } else {
+                apply_warp_3d_f32(&image_array, &wf_input, cval_f32)
+            };
+
+            Ok(output.into_pyarray(py).into_any().unbind())
+        }
+        "float16" => {
+            let image_arr: PyReadonlyArray3<'py, u16> = image.getattr("view")?
+                .call1((py.import("numpy")?.getattr("uint16")?,))?
+                .extract()
+                .map_err(|e| {
+                    pyo3::exceptions::PyTypeError::new_err(format!(
+                        "Failed to view float16 as uint16: {}", e
+                    ))
+                })?;
+
+            let input_shape = image_arr.shape();
+            let (d, h, w) = (input_shape[0], input_shape[1], input_shape[2]);
+            let input_slice = image_arr.as_slice()?;
+
+            // Reinterpret u16 as f16
+            let input_f16: &[f16] = unsafe {
+                std::slice::from_raw_parts(input_slice.as_ptr() as *const f16, input_slice.len())
+            };
+
+            let image_array = ndarray::ArrayView3::from_shape((d, h, w), input_f16)
+                .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Shape error: {}", e)))?;
+
+            let cval_f16 = f16::from_f64(cval);
+
+            let output = if upsample {
+                let upsampled = upsample_warp_field_2x(&wf_input);
+                apply_warp_3d_f16(&image_array, &upsampled.view(), cval_f16)
+            } else {
+                apply_warp_3d_f16(&image_array, &wf_input, cval_f16)
+            };
+
+            // Reinterpret f16 output as u16 for numpy, then view as float16
+            let out_shape = output.dim();
+            let output_u16: Array3<u16> = unsafe {
+                let ptr = output.as_ptr() as *const u16;
+                let slice = std::slice::from_raw_parts(ptr, output.len());
+                Array3::from_shape_vec(out_shape, slice.to_vec()).unwrap()
+            };
+
+            let result = output_u16.into_pyarray(py);
+            let float16_result = result.call_method1("view", (py.import("numpy")?.getattr("float16")?,))?;
+            Ok(float16_result.unbind())
+        }
+        "uint8" => {
+            let image_arr: PyReadonlyArray3<'py, u8> = image.extract().map_err(|e| {
+                pyo3::exceptions::PyTypeError::new_err(format!(
+                    "Failed to extract uint8 array: {}", e
+                ))
+            })?;
+            let image_array = image_arr.as_array();
+            let cval_u8 = cval.round().clamp(0.0, 255.0) as u8;
+
+            let output = if upsample {
+                let upsampled = upsample_warp_field_2x(&wf_input);
+                apply_warp_3d_u8(&image_array, &upsampled.view(), cval_u8)
+            } else {
+                apply_warp_3d_u8(&image_array, &wf_input, cval_u8)
+            };
+
+            Ok(output.into_pyarray(py).into_any().unbind())
+        }
+        _ => Err(pyo3::exceptions::PyTypeError::new_err(format!(
+            "Unsupported dtype '{}'. Supported dtypes: float32, float16, uint8",
+            dtype_name
+        ))),
+    }
 }
 
 // =============================================================================
