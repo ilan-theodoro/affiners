@@ -48,7 +48,7 @@ thread_local! {
 }
 
 /// Set whether scalar fallback is allowed for the current thread.
-/// 
+///
 /// When set to false, any attempt to use scalar fallback will panic.
 /// This is useful for ensuring SIMD code paths are being used.
 pub fn set_scalar_fallback_allowed(allowed: bool) {
@@ -56,7 +56,7 @@ pub fn set_scalar_fallback_allowed(allowed: bool) {
 }
 
 /// Check if scalar fallback is allowed, panic if not.
-/// 
+///
 /// Call this before any scalar fallback code path.
 #[inline]
 pub fn check_scalar_fallback(operation: &str) {
@@ -554,7 +554,8 @@ mod tests {
         let matrix = identity_homogeneous();
 
         // Smaller output
-        let output = affine_transform_3d_f32(&input.view(), &matrix.view(), Some((10, 10, 10)), 0.0);
+        let output =
+            affine_transform_3d_f32(&input.view(), &matrix.view(), Some((10, 10, 10)), 0.0);
         assert_eq!(output.dim(), (10, 10, 10));
 
         // Larger output (edges will be cval)

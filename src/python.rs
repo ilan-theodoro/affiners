@@ -6,7 +6,10 @@ use numpy::{IntoPyArray, PyArray3, PyReadonlyArray2, PyReadonlyArray3, PyUntyped
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-use crate::{affine_transform_3d_f16, affine_transform_3d_f32, affine_transform_3d_u8, apply_warp_3d_f16, apply_warp_3d_f32, apply_warp_3d_u8, upsample_warp_field_2x, set_scalar_fallback_allowed};
+use crate::{
+    affine_transform_3d_f16, affine_transform_3d_f32, affine_transform_3d_u8, apply_warp_3d_f16,
+    apply_warp_3d_f32, apply_warp_3d_u8, set_scalar_fallback_allowed, upsample_warp_field_2x,
+};
 
 // =============================================================================
 // Helper functions
@@ -19,13 +22,13 @@ fn to_float64_array<'py>(
 ) -> PyResult<PyReadonlyArray2<'py, f64>> {
     let numpy = py.import("numpy")?;
     let float64_dtype = numpy.getattr("float64")?;
-    
+
     // Use np.asarray with dtype=float64 for efficient conversion
     // This is a no-op if already float64 and contiguous
     let kwargs = PyDict::new(py);
     kwargs.set_item("dtype", float64_dtype)?;
     kwargs.set_item("order", "C")?;
-    
+
     let converted = numpy.call_method("asarray", (array,), Some(&kwargs))?;
     converted.extract().map_err(|e| {
         pyo3::exceptions::PyTypeError::new_err(format!(
@@ -198,12 +201,13 @@ fn affine_transform<'py>(
 
     // Get input dtype and dispatch
     let dtype_name = get_dtype_name(input)?;
-    
+
     match dtype_name.as_str() {
         "float32" => {
             let input: PyReadonlyArray3<'py, f32> = input.extract().map_err(|e| {
                 pyo3::exceptions::PyTypeError::new_err(format!(
-                    "Failed to extract float32 array: {}", e
+                    "Failed to extract float32 array: {}",
+                    e
                 ))
             })?;
             let input_array = input.as_array();
@@ -212,15 +216,17 @@ fn affine_transform<'py>(
             Ok(output.into_pyarray(py).into_any().unbind())
         }
         "float16" => {
-            let input: PyReadonlyArray3<'py, u16> = input.getattr("view")?
+            let input: PyReadonlyArray3<'py, u16> = input
+                .getattr("view")?
                 .call1((py.import("numpy")?.getattr("uint16")?,))?
                 .extract()
                 .map_err(|e| {
                     pyo3::exceptions::PyTypeError::new_err(format!(
-                        "Failed to view float16 as uint16: {}", e
+                        "Failed to view float16 as uint16: {}",
+                        e
                     ))
                 })?;
-            
+
             let input_shape = input.shape();
             let (d, h, w) = (input_shape[0], input_shape[1], input_shape[2]);
             let input_slice = input.as_slice()?;
@@ -230,8 +236,10 @@ fn affine_transform<'py>(
                 std::slice::from_raw_parts(input_slice.as_ptr() as *const f16, input_slice.len())
             };
 
-            let input_array = ndarray::ArrayView3::from_shape((d, h, w), input_f16)
-                .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Shape error: {}", e)))?;
+            let input_array =
+                ndarray::ArrayView3::from_shape((d, h, w), input_f16).map_err(|e| {
+                    pyo3::exceptions::PyValueError::new_err(format!("Shape error: {}", e))
+                })?;
 
             let matrix_array = matrix.as_array();
             let output = affine_transform_3d_f16(&input_array, &matrix_array, output_shape, cval);
@@ -245,13 +253,15 @@ fn affine_transform<'py>(
             };
 
             let result = output_u16.into_pyarray(py);
-            let float16_result = result.call_method1("view", (py.import("numpy")?.getattr("float16")?,))?;
+            let float16_result =
+                result.call_method1("view", (py.import("numpy")?.getattr("float16")?,))?;
             Ok(float16_result.unbind())
         }
         "uint8" => {
             let input: PyReadonlyArray3<'py, u8> = input.extract().map_err(|e| {
                 pyo3::exceptions::PyTypeError::new_err(format!(
-                    "Failed to extract uint8 array: {}", e
+                    "Failed to extract uint8 array: {}",
+                    e
                 ))
             })?;
             let input_array = input.as_array();
@@ -436,9 +446,10 @@ fn apply_warp<'py>(
     let wf_input = warp_field.as_array();
 
     if wf_input.shape()[0] < 3 {
-        return Err(pyo3::exceptions::PyValueError::new_err(
-            format!("Warp field must have at least 3 channels (dz, dy, dx), got {}", wf_input.shape()[0])
-        ));
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "Warp field must have at least 3 channels (dz, dy, dx), got {}",
+            wf_input.shape()[0]
+        )));
     }
 
     // Get input dtype and dispatch
@@ -448,7 +459,8 @@ fn apply_warp<'py>(
         "float32" => {
             let image_arr: PyReadonlyArray3<'py, f32> = image.extract().map_err(|e| {
                 pyo3::exceptions::PyTypeError::new_err(format!(
-                    "Failed to extract float32 array: {}", e
+                    "Failed to extract float32 array: {}",
+                    e
                 ))
             })?;
             let image_array = image_arr.as_array();
@@ -464,12 +476,14 @@ fn apply_warp<'py>(
             Ok(output.into_pyarray(py).into_any().unbind())
         }
         "float16" => {
-            let image_arr: PyReadonlyArray3<'py, u16> = image.getattr("view")?
+            let image_arr: PyReadonlyArray3<'py, u16> = image
+                .getattr("view")?
                 .call1((py.import("numpy")?.getattr("uint16")?,))?
                 .extract()
                 .map_err(|e| {
                     pyo3::exceptions::PyTypeError::new_err(format!(
-                        "Failed to view float16 as uint16: {}", e
+                        "Failed to view float16 as uint16: {}",
+                        e
                     ))
                 })?;
 
@@ -482,8 +496,10 @@ fn apply_warp<'py>(
                 std::slice::from_raw_parts(input_slice.as_ptr() as *const f16, input_slice.len())
             };
 
-            let image_array = ndarray::ArrayView3::from_shape((d, h, w), input_f16)
-                .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Shape error: {}", e)))?;
+            let image_array =
+                ndarray::ArrayView3::from_shape((d, h, w), input_f16).map_err(|e| {
+                    pyo3::exceptions::PyValueError::new_err(format!("Shape error: {}", e))
+                })?;
 
             let cval_f16 = f16::from_f64(cval);
 
@@ -503,13 +519,15 @@ fn apply_warp<'py>(
             };
 
             let result = output_u16.into_pyarray(py);
-            let float16_result = result.call_method1("view", (py.import("numpy")?.getattr("float16")?,))?;
+            let float16_result =
+                result.call_method1("view", (py.import("numpy")?.getattr("float16")?,))?;
             Ok(float16_result.unbind())
         }
         "uint8" => {
             let image_arr: PyReadonlyArray3<'py, u8> = image.extract().map_err(|e| {
                 pyo3::exceptions::PyTypeError::new_err(format!(
-                    "Failed to extract uint8 array: {}", e
+                    "Failed to extract uint8 array: {}",
+                    e
                 ))
             })?;
             let image_array = image_arr.as_array();
@@ -536,7 +554,7 @@ fn apply_warp<'py>(
 // =============================================================================
 
 /// Set whether scalar fallback is allowed (internal use)
-/// 
+///
 /// When set to False, any attempt to use scalar fallback will raise a RuntimeError.
 /// This is useful for ensuring SIMD code paths are being used.
 ///
@@ -569,18 +587,18 @@ fn _set_scalar_fallback_allowed(allowed: bool) {
 fn affiners(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Main unified API
     m.add_function(wrap_pyfunction!(affine_transform, m)?)?;
-    
+
     // Type-specific functions for explicit control
     m.add_function(wrap_pyfunction!(affine_transform_f32, m)?)?;
     m.add_function(wrap_pyfunction!(affine_transform_f16, m)?)?;
     m.add_function(wrap_pyfunction!(affine_transform_u8, m)?)?;
-    
+
     // Warp field functions
     m.add_function(wrap_pyfunction!(apply_warp, m)?)?;
-    
+
     // Utilities
     m.add_function(wrap_pyfunction!(build_info, m)?)?;
-    
+
     // Internal functions for scalar fallback control
     m.add_function(wrap_pyfunction!(_set_scalar_fallback_allowed, m)?)?;
     Ok(())

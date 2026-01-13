@@ -708,7 +708,7 @@ use crate::scalar::{
 use ndarray::ArrayView4;
 
 /// AVX512 optimized apply_warp for f32
-/// 
+///
 /// This implementation uses the SAME algorithm as AVX2 to ensure identical results.
 /// The only difference is processing 16 voxels at a time instead of 8.
 #[target_feature(enable = "avx512f")]
@@ -750,10 +750,26 @@ pub unsafe fn apply_warp_3d_f32_avx512(
             .enumerate()
             .for_each(|(oz, slice_z)| {
                 process_warp_z_slice_f32_avx512(
-                    image_slice, wf_dz_slice, wf_dy_slice, wf_dx_slice, slice_z,
-                    oz, img_h, img_w, img_d, wf_d, wf_h, wf_w,
-                    img_stride_z, img_stride_y, wf_stride_z, wf_stride_y,
-                    scale_z, scale_y, scale_x, cval,
+                    image_slice,
+                    wf_dz_slice,
+                    wf_dy_slice,
+                    wf_dx_slice,
+                    slice_z,
+                    oz,
+                    img_h,
+                    img_w,
+                    img_d,
+                    wf_d,
+                    wf_h,
+                    wf_w,
+                    img_stride_z,
+                    img_stride_y,
+                    wf_stride_z,
+                    wf_stride_y,
+                    scale_z,
+                    scale_y,
+                    scale_x,
+                    cval,
                 );
             });
     }
@@ -762,10 +778,26 @@ pub unsafe fn apply_warp_3d_f32_avx512(
     {
         for (oz, slice_z) in output_slice.chunks_mut(chunk_size).enumerate() {
             process_warp_z_slice_f32_avx512(
-                image_slice, wf_dz_slice, wf_dy_slice, wf_dx_slice, slice_z,
-                oz, img_h, img_w, img_d, wf_d, wf_h, wf_w,
-                img_stride_z, img_stride_y, wf_stride_z, wf_stride_y,
-                scale_z, scale_y, scale_x, cval,
+                image_slice,
+                wf_dz_slice,
+                wf_dy_slice,
+                wf_dx_slice,
+                slice_z,
+                oz,
+                img_h,
+                img_w,
+                img_d,
+                wf_d,
+                wf_h,
+                wf_w,
+                img_stride_z,
+                img_stride_y,
+                wf_stride_z,
+                wf_stride_y,
+                scale_z,
+                scale_y,
+                scale_x,
+                cval,
             );
         }
     }
@@ -774,10 +806,26 @@ pub unsafe fn apply_warp_3d_f32_avx512(
 #[target_feature(enable = "avx512f")]
 #[allow(clippy::too_many_arguments)]
 unsafe fn process_warp_z_slice_f32_avx512(
-    image_slice: &[f32], wf_dz_slice: &[f32], wf_dy_slice: &[f32], wf_dx_slice: &[f32],
-    slice_z: &mut [f32], oz: usize, img_h: usize, img_w: usize, img_d: usize,
-    wf_d: usize, wf_h: usize, wf_w: usize, img_stride_z: usize, img_stride_y: usize,
-    wf_stride_z: usize, wf_stride_y: usize, scale_z: f32, scale_y: f32, scale_x: f32, cval: f32,
+    image_slice: &[f32],
+    wf_dz_slice: &[f32],
+    wf_dy_slice: &[f32],
+    wf_dx_slice: &[f32],
+    slice_z: &mut [f32],
+    oz: usize,
+    img_h: usize,
+    img_w: usize,
+    img_d: usize,
+    wf_d: usize,
+    wf_h: usize,
+    wf_w: usize,
+    img_stride_z: usize,
+    img_stride_y: usize,
+    wf_stride_z: usize,
+    wf_stride_y: usize,
+    scale_z: f32,
+    scale_y: f32,
+    scale_x: f32,
+    cval: f32,
 ) {
     let oz_f = oz as f32;
     let wf_z = oz_f * scale_z - 0.5;
@@ -803,10 +851,22 @@ unsafe fn process_warp_z_slice_f32_avx512(
         // AVX512 loop - process 16 voxels at a time
         while ox + 15 < img_w {
             let vx = _mm512_setr_ps(
-                ox as f32, (ox + 1) as f32, (ox + 2) as f32, (ox + 3) as f32,
-                (ox + 4) as f32, (ox + 5) as f32, (ox + 6) as f32, (ox + 7) as f32,
-                (ox + 8) as f32, (ox + 9) as f32, (ox + 10) as f32, (ox + 11) as f32,
-                (ox + 12) as f32, (ox + 13) as f32, (ox + 14) as f32, (ox + 15) as f32,
+                ox as f32,
+                (ox + 1) as f32,
+                (ox + 2) as f32,
+                (ox + 3) as f32,
+                (ox + 4) as f32,
+                (ox + 5) as f32,
+                (ox + 6) as f32,
+                (ox + 7) as f32,
+                (ox + 8) as f32,
+                (ox + 9) as f32,
+                (ox + 10) as f32,
+                (ox + 11) as f32,
+                (ox + 12) as f32,
+                (ox + 13) as f32,
+                (ox + 14) as f32,
+                (ox + 15) as f32,
             );
 
             let wf_xs = _mm512_sub_ps(_mm512_mul_ps(vx, _mm512_set1_ps(scale_x)), half);
@@ -824,11 +884,24 @@ unsafe fn process_warp_z_slice_f32_avx512(
                 let fx_j = wf_x_clamped - wf_x_clamped.floor();
 
                 let (dz, dy, dx) = interp_8_neighbors_warp(
-                    wf_dz_slice, wf_dy_slice, wf_dx_slice, wf_stride_z, wf_stride_y,
-                    wf_z0_clamped, wf_y0_clamped, wf_x0_j, wf_z1_clamped, wf_y1_clamped, wf_x1_j,
-                    fz_wf, fy_wf, fx_j,
+                    wf_dz_slice,
+                    wf_dy_slice,
+                    wf_dx_slice,
+                    wf_stride_z,
+                    wf_stride_y,
+                    wf_z0_clamped,
+                    wf_y0_clamped,
+                    wf_x0_j,
+                    wf_z1_clamped,
+                    wf_y1_clamped,
+                    wf_x1_j,
+                    fz_wf,
+                    fy_wf,
+                    fx_j,
                 );
-                dz_arr[j] = dz; dy_arr[j] = dy; dx_arr[j] = dx;
+                dz_arr[j] = dz;
+                dy_arr[j] = dy;
+                dx_arr[j] = dx;
             }
 
             let dz_vec = _mm512_loadu_ps(dz_arr.as_ptr());
@@ -905,8 +978,12 @@ unsafe fn process_warp_z_slice_f32_avx512(
                 let y0 = yi_arr[j];
                 let x0 = xi_arr[j];
 
-                if x0 >= 0 && x0 < img_w as i32 && y0 >= 0 && y0 < img_h as i32
-                    && z0 >= 0 && z0 < img_d as i32
+                if x0 >= 0
+                    && x0 < img_w as i32
+                    && y0 >= 0
+                    && y0 < img_h as i32
+                    && z0 >= 0
+                    && z0 < img_d as i32
                 {
                     let z0u = z0 as usize;
                     let y0u = y0 as usize;
@@ -952,9 +1029,20 @@ unsafe fn process_warp_z_slice_f32_avx512(
             let fx_wf = (wf_x - wf_x.floor()).clamp(0.0, 1.0);
 
             let (dz, dy, dx) = interp_8_neighbors_warp(
-                wf_dz_slice, wf_dy_slice, wf_dx_slice, wf_stride_z, wf_stride_y,
-                wf_z0_clamped, wf_y0_clamped, wf_x0_clamped, wf_z1_clamped, wf_y1_clamped, wf_x1_clamped,
-                fz_wf, fy_wf, fx_wf,
+                wf_dz_slice,
+                wf_dy_slice,
+                wf_dx_slice,
+                wf_stride_z,
+                wf_stride_y,
+                wf_z0_clamped,
+                wf_y0_clamped,
+                wf_x0_clamped,
+                wf_z1_clamped,
+                wf_y1_clamped,
+                wf_x1_clamped,
+                fz_wf,
+                fy_wf,
+                fx_wf,
             );
 
             let src_z = oz_f - dz;
@@ -962,8 +1050,16 @@ unsafe fn process_warp_z_slice_f32_avx512(
             let src_x = ox_f - dx;
 
             let value = trilinear_interp_image_warp_f32(
-                image_slice, img_d, img_h, img_w, img_stride_z, img_stride_y,
-                src_z, src_y, src_x, cval,
+                image_slice,
+                img_d,
+                img_h,
+                img_w,
+                img_stride_z,
+                img_stride_y,
+                src_z,
+                src_y,
+                src_x,
+                cval,
             );
             slice_z[row_start + ox] = value;
             ox += 1;
@@ -1016,10 +1112,26 @@ pub unsafe fn apply_warp_3d_f16_avx512(
             .enumerate()
             .for_each(|(oz, slice_z)| {
                 process_warp_z_slice_f16_avx512(
-                    image_slice, wf_dz_slice, wf_dy_slice, wf_dx_slice, slice_z,
-                    oz, img_h, img_w, img_d, wf_d, wf_h, wf_w,
-                    img_stride_z, img_stride_y, wf_stride_z, wf_stride_y,
-                    scale_z, scale_y, scale_x, cval_f32,
+                    image_slice,
+                    wf_dz_slice,
+                    wf_dy_slice,
+                    wf_dx_slice,
+                    slice_z,
+                    oz,
+                    img_h,
+                    img_w,
+                    img_d,
+                    wf_d,
+                    wf_h,
+                    wf_w,
+                    img_stride_z,
+                    img_stride_y,
+                    wf_stride_z,
+                    wf_stride_y,
+                    scale_z,
+                    scale_y,
+                    scale_x,
+                    cval_f32,
                 );
             });
     }
@@ -1028,10 +1140,26 @@ pub unsafe fn apply_warp_3d_f16_avx512(
     {
         for (oz, slice_z) in output_slice.chunks_mut(chunk_size).enumerate() {
             process_warp_z_slice_f16_avx512(
-                image_slice, wf_dz_slice, wf_dy_slice, wf_dx_slice, slice_z,
-                oz, img_h, img_w, img_d, wf_d, wf_h, wf_w,
-                img_stride_z, img_stride_y, wf_stride_z, wf_stride_y,
-                scale_z, scale_y, scale_x, cval_f32,
+                image_slice,
+                wf_dz_slice,
+                wf_dy_slice,
+                wf_dx_slice,
+                slice_z,
+                oz,
+                img_h,
+                img_w,
+                img_d,
+                wf_d,
+                wf_h,
+                wf_w,
+                img_stride_z,
+                img_stride_y,
+                wf_stride_z,
+                wf_stride_y,
+                scale_z,
+                scale_y,
+                scale_x,
+                cval_f32,
             );
         }
     }
@@ -1040,10 +1168,26 @@ pub unsafe fn apply_warp_3d_f16_avx512(
 #[target_feature(enable = "avx512f")]
 #[allow(clippy::too_many_arguments)]
 unsafe fn process_warp_z_slice_f16_avx512(
-    image_slice: &[f16], wf_dz_slice: &[f32], wf_dy_slice: &[f32], wf_dx_slice: &[f32],
-    slice_z: &mut [f16], oz: usize, img_h: usize, img_w: usize, img_d: usize,
-    wf_d: usize, wf_h: usize, wf_w: usize, img_stride_z: usize, img_stride_y: usize,
-    wf_stride_z: usize, wf_stride_y: usize, scale_z: f32, scale_y: f32, scale_x: f32, cval: f32,
+    image_slice: &[f16],
+    wf_dz_slice: &[f32],
+    wf_dy_slice: &[f32],
+    wf_dx_slice: &[f32],
+    slice_z: &mut [f16],
+    oz: usize,
+    img_h: usize,
+    img_w: usize,
+    img_d: usize,
+    wf_d: usize,
+    wf_h: usize,
+    wf_w: usize,
+    img_stride_z: usize,
+    img_stride_y: usize,
+    wf_stride_z: usize,
+    wf_stride_y: usize,
+    scale_z: f32,
+    scale_y: f32,
+    scale_x: f32,
+    cval: f32,
 ) {
     let oz_f = oz as f32;
     let wf_z = oz_f * scale_z - 0.5;
@@ -1071,9 +1215,20 @@ unsafe fn process_warp_z_slice_f16_avx512(
             let fx_wf = wf_x_clamped - wf_x_clamped.floor();
 
             let (dz, dy, dx) = interp_8_neighbors_warp(
-                wf_dz_slice, wf_dy_slice, wf_dx_slice, wf_stride_z, wf_stride_y,
-                wf_z0_clamped, wf_y0_clamped, wf_x0_clamped, wf_z1_clamped, wf_y1_clamped, wf_x1_clamped,
-                fz_wf, fy_wf, fx_wf,
+                wf_dz_slice,
+                wf_dy_slice,
+                wf_dx_slice,
+                wf_stride_z,
+                wf_stride_y,
+                wf_z0_clamped,
+                wf_y0_clamped,
+                wf_x0_clamped,
+                wf_z1_clamped,
+                wf_y1_clamped,
+                wf_x1_clamped,
+                fz_wf,
+                fy_wf,
+                fx_wf,
             );
 
             let src_z = oz_f - dz;
@@ -1081,8 +1236,16 @@ unsafe fn process_warp_z_slice_f16_avx512(
             let src_x = ox_f - dx;
 
             let value = trilinear_interp_image_warp_f16(
-                image_slice, img_d, img_h, img_w, img_stride_z, img_stride_y,
-                src_z, src_y, src_x, cval,
+                image_slice,
+                img_d,
+                img_h,
+                img_w,
+                img_stride_z,
+                img_stride_y,
+                src_z,
+                src_y,
+                src_x,
+                cval,
             );
             slice_z[row_start + ox] = f16::from_f32(value);
         }
@@ -1134,10 +1297,26 @@ pub unsafe fn apply_warp_3d_u8_avx512(
             .enumerate()
             .for_each(|(oz, slice_z)| {
                 process_warp_z_slice_u8_avx512(
-                    image_slice, wf_dz_slice, wf_dy_slice, wf_dx_slice, slice_z,
-                    oz, img_h, img_w, img_d, wf_d, wf_h, wf_w,
-                    img_stride_z, img_stride_y, wf_stride_z, wf_stride_y,
-                    scale_z, scale_y, scale_x, cval_f32,
+                    image_slice,
+                    wf_dz_slice,
+                    wf_dy_slice,
+                    wf_dx_slice,
+                    slice_z,
+                    oz,
+                    img_h,
+                    img_w,
+                    img_d,
+                    wf_d,
+                    wf_h,
+                    wf_w,
+                    img_stride_z,
+                    img_stride_y,
+                    wf_stride_z,
+                    wf_stride_y,
+                    scale_z,
+                    scale_y,
+                    scale_x,
+                    cval_f32,
                 );
             });
     }
@@ -1146,10 +1325,26 @@ pub unsafe fn apply_warp_3d_u8_avx512(
     {
         for (oz, slice_z) in output_slice.chunks_mut(chunk_size).enumerate() {
             process_warp_z_slice_u8_avx512(
-                image_slice, wf_dz_slice, wf_dy_slice, wf_dx_slice, slice_z,
-                oz, img_h, img_w, img_d, wf_d, wf_h, wf_w,
-                img_stride_z, img_stride_y, wf_stride_z, wf_stride_y,
-                scale_z, scale_y, scale_x, cval_f32,
+                image_slice,
+                wf_dz_slice,
+                wf_dy_slice,
+                wf_dx_slice,
+                slice_z,
+                oz,
+                img_h,
+                img_w,
+                img_d,
+                wf_d,
+                wf_h,
+                wf_w,
+                img_stride_z,
+                img_stride_y,
+                wf_stride_z,
+                wf_stride_y,
+                scale_z,
+                scale_y,
+                scale_x,
+                cval_f32,
             );
         }
     }
@@ -1158,10 +1353,26 @@ pub unsafe fn apply_warp_3d_u8_avx512(
 #[target_feature(enable = "avx512f")]
 #[allow(clippy::too_many_arguments)]
 unsafe fn process_warp_z_slice_u8_avx512(
-    image_slice: &[u8], wf_dz_slice: &[f32], wf_dy_slice: &[f32], wf_dx_slice: &[f32],
-    slice_z: &mut [u8], oz: usize, img_h: usize, img_w: usize, img_d: usize,
-    wf_d: usize, wf_h: usize, wf_w: usize, img_stride_z: usize, img_stride_y: usize,
-    wf_stride_z: usize, wf_stride_y: usize, scale_z: f32, scale_y: f32, scale_x: f32, cval: f32,
+    image_slice: &[u8],
+    wf_dz_slice: &[f32],
+    wf_dy_slice: &[f32],
+    wf_dx_slice: &[f32],
+    slice_z: &mut [u8],
+    oz: usize,
+    img_h: usize,
+    img_w: usize,
+    img_d: usize,
+    wf_d: usize,
+    wf_h: usize,
+    wf_w: usize,
+    img_stride_z: usize,
+    img_stride_y: usize,
+    wf_stride_z: usize,
+    wf_stride_y: usize,
+    scale_z: f32,
+    scale_y: f32,
+    scale_x: f32,
+    cval: f32,
 ) {
     let oz_f = oz as f32;
     let wf_z = oz_f * scale_z - 0.5;
@@ -1189,9 +1400,20 @@ unsafe fn process_warp_z_slice_u8_avx512(
             let fx_wf = wf_x_clamped - wf_x_clamped.floor();
 
             let (dz, dy, dx) = interp_8_neighbors_warp(
-                wf_dz_slice, wf_dy_slice, wf_dx_slice, wf_stride_z, wf_stride_y,
-                wf_z0_clamped, wf_y0_clamped, wf_x0_clamped, wf_z1_clamped, wf_y1_clamped, wf_x1_clamped,
-                fz_wf, fy_wf, fx_wf,
+                wf_dz_slice,
+                wf_dy_slice,
+                wf_dx_slice,
+                wf_stride_z,
+                wf_stride_y,
+                wf_z0_clamped,
+                wf_y0_clamped,
+                wf_x0_clamped,
+                wf_z1_clamped,
+                wf_y1_clamped,
+                wf_x1_clamped,
+                fz_wf,
+                fy_wf,
+                fx_wf,
             );
 
             let src_z = oz_f - dz;
@@ -1199,8 +1421,16 @@ unsafe fn process_warp_z_slice_u8_avx512(
             let src_x = ox_f - dx;
 
             let value = trilinear_interp_image_warp_u8(
-                image_slice, img_d, img_h, img_w, img_stride_z, img_stride_y,
-                src_z, src_y, src_x, cval,
+                image_slice,
+                img_d,
+                img_h,
+                img_w,
+                img_stride_z,
+                img_stride_y,
+                src_z,
+                src_y,
+                src_x,
+                cval,
             );
             slice_z[row_start + ox] = value.round().clamp(0.0, 255.0) as u8;
         }

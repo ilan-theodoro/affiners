@@ -20,13 +20,13 @@ use ndarray::{Array3, Array4, ArrayView3, ArrayView4};
 // =============================================================================
 
 /// Upsample a 4D warp field by 2x in the spatial dimensions (z, y, x)
-/// 
+///
 /// This matches scipy.ndimage.zoom with factors=(1, 2, 2, 2), order=1, mode='nearest'
-/// 
+///
 /// scipy.ndimage.zoom coordinate mapping:
 ///   in_coord = out_idx * (in_size - 1) / (out_size - 1)
 /// where out_size = round(in_size * zoom)
-/// 
+///
 /// Input shape: (channels, d, h, w)
 /// Output shape: (channels, d*2, h*2, w*2)
 pub fn upsample_warp_field_2x(warp_field: &ArrayView4<f32>) -> Array4<f32> {
@@ -34,41 +34,69 @@ pub fn upsample_warp_field_2x(warp_field: &ArrayView4<f32>) -> Array4<f32> {
     let out_d = in_d * 2;
     let out_h = in_h * 2;
     let out_w = in_w * 2;
-    
+
     // Compute scale factors for coordinate mapping
     // in_coord = out_idx * scale where scale = (in_size - 1) / (out_size - 1)
-    let scale_z = if out_d > 1 { (in_d - 1) as f32 / (out_d - 1) as f32 } else { 0.0 };
-    let scale_y = if out_h > 1 { (in_h - 1) as f32 / (out_h - 1) as f32 } else { 0.0 };
-    let scale_x = if out_w > 1 { (in_w - 1) as f32 / (out_w - 1) as f32 } else { 0.0 };
-    
+    let scale_z = if out_d > 1 {
+        (in_d - 1) as f32 / (out_d - 1) as f32
+    } else {
+        0.0
+    };
+    let scale_y = if out_h > 1 {
+        (in_h - 1) as f32 / (out_h - 1) as f32
+    } else {
+        0.0
+    };
+    let scale_x = if out_w > 1 {
+        (in_w - 1) as f32 / (out_w - 1) as f32
+    } else {
+        0.0
+    };
+
     let mut output = Array4::<f32>::zeros((channels, out_d, out_h, out_w));
-    
+
     // For each channel
     for c in 0..channels {
         let input_channel = warp_field.slice(ndarray::s![c, .., .., ..]);
-        let input_slice = input_channel.as_slice().expect("Input must be C-contiguous");
-        
+        let input_slice = input_channel
+            .as_slice()
+            .expect("Input must be C-contiguous");
+
         let in_stride_z = in_h * in_w;
         let in_stride_y = in_w;
-        
+
         // Parallel over output z slices
         #[cfg(feature = "parallel")]
         {
             use rayon::prelude::*;
             let out_stride_z = out_h * out_w;
             let output_channel = output.slice_mut(ndarray::s![c, .., .., ..]);
-            let output_slice = output_channel.into_slice().expect("Output must be C-contiguous");
-            
-            output_slice.par_chunks_mut(out_stride_z).enumerate().for_each(|(oz, slice_z)| {
-                upsample_z_slice(
-                    input_slice, slice_z, oz, 
-                    in_d, in_h, in_w, out_h, out_w,
-                    in_stride_z, in_stride_y,
-                    scale_z, scale_y, scale_x,
-                );
-            });
+            let output_slice = output_channel
+                .into_slice()
+                .expect("Output must be C-contiguous");
+
+            output_slice
+                .par_chunks_mut(out_stride_z)
+                .enumerate()
+                .for_each(|(oz, slice_z)| {
+                    upsample_z_slice(
+                        input_slice,
+                        slice_z,
+                        oz,
+                        in_d,
+                        in_h,
+                        in_w,
+                        out_h,
+                        out_w,
+                        in_stride_z,
+                        in_stride_y,
+                        scale_z,
+                        scale_y,
+                        scale_x,
+                    );
+                });
         }
-        
+
         #[cfg(not(feature = "parallel"))]
         {
             for oz in 0..out_d {
@@ -77,10 +105,17 @@ pub fn upsample_warp_field_2x(warp_field: &ArrayView4<f32>) -> Array4<f32> {
                     let iy = oy as f32 * scale_y;
                     for ox in 0..out_w {
                         let ix = ox as f32 * scale_x;
-                        
+
                         let value = trilinear_interp_nearest_mode(
-                            input_slice, in_d, in_h, in_w, in_stride_z, in_stride_y,
-                            iz, iy, ix,
+                            input_slice,
+                            in_d,
+                            in_h,
+                            in_w,
+                            in_stride_z,
+                            in_stride_y,
+                            iz,
+                            iy,
+                            ix,
                         );
                         output[[c, oz, oy, ox]] = value;
                     }
@@ -88,7 +123,7 @@ pub fn upsample_warp_field_2x(warp_field: &ArrayView4<f32>) -> Array4<f32> {
             }
         }
     }
-    
+
     output
 }
 
@@ -110,16 +145,23 @@ fn upsample_z_slice(
     scale_x: f32,
 ) {
     let iz = oz as f32 * scale_z;
-    
+
     for oy in 0..out_h {
         let iy = oy as f32 * scale_y;
-        
+
         for ox in 0..out_w {
             let ix = ox as f32 * scale_x;
-            
+
             let value = trilinear_interp_nearest_mode(
-                input, in_d, in_h, in_w, in_stride_z, in_stride_y,
-                iz, iy, ix,
+                input,
+                in_d,
+                in_h,
+                in_w,
+                in_stride_z,
+                in_stride_y,
+                iz,
+                iy,
+                ix,
             );
             output_slice[oy * out_w + ox] = value;
         }
@@ -144,19 +186,19 @@ fn trilinear_interp_nearest_mode(
     let z_clamped = z.clamp(0.0, (d - 1) as f32);
     let y_clamped = y.clamp(0.0, (h - 1) as f32);
     let x_clamped = x.clamp(0.0, (w - 1) as f32);
-    
+
     let z0 = z_clamped.floor() as usize;
     let y0 = y_clamped.floor() as usize;
     let x0 = x_clamped.floor() as usize;
-    
+
     let z1 = (z0 + 1).min(d - 1);
     let y1 = (y0 + 1).min(h - 1);
     let x1 = (x0 + 1).min(w - 1);
-    
+
     let fz = z_clamped - z_clamped.floor();
     let fy = y_clamped - y_clamped.floor();
     let fx = x_clamped - x_clamped.floor();
-    
+
     let idx000 = z0 * stride_z + y0 * stride_y + x0;
     let idx001 = z0 * stride_z + y0 * stride_y + x1;
     let idx010 = z0 * stride_z + y1 * stride_y + x0;
@@ -165,7 +207,7 @@ fn trilinear_interp_nearest_mode(
     let idx101 = z1 * stride_z + y0 * stride_y + x1;
     let idx110 = z1 * stride_z + y1 * stride_y + x0;
     let idx111 = z1 * stride_z + y1 * stride_y + x1;
-    
+
     let v000 = data[idx000];
     let v001 = data[idx001];
     let v010 = data[idx010];
@@ -174,7 +216,7 @@ fn trilinear_interp_nearest_mode(
     let v101 = data[idx101];
     let v110 = data[idx110];
     let v111 = data[idx111];
-    
+
     // Trilinear interpolation
     v000 * (1.0 - fx) * (1.0 - fy) * (1.0 - fz)
         + v001 * fx * (1.0 - fy) * (1.0 - fz)
@@ -383,7 +425,7 @@ mod tests {
     fn test_upsample_warp_field_2x() {
         // Test that upsample_warp_field_2x matches scipy.ndimage.zoom behavior
         // scipy.ndimage.zoom coordinate formula: in_coord = out_idx * (in_size - 1) / (out_size - 1)
-        
+
         // Create a simple 2x2x2 warp field (single channel for simplicity)
         let mut warp_field = Array4::<f32>::zeros((1, 2, 2, 2));
         warp_field[[0, 0, 0, 0]] = 1.0;
@@ -407,12 +449,30 @@ mod tests {
         // [0,0,3,3] = 4.0 (maps to input [0,1,1])
         // [0,3,0,0] = 5.0 (maps to input [1,0,0])
         // [0,3,3,3] = 8.0 (maps to input [1,1,1])
-        assert!((upsampled[[0, 0, 0, 0]] - 1.0).abs() < 1e-5, "Corner [0,0,0,0] should be 1.0");
-        assert!((upsampled[[0, 0, 0, 3]] - 2.0).abs() < 1e-5, "Corner [0,0,0,3] should be 2.0");
-        assert!((upsampled[[0, 0, 3, 0]] - 3.0).abs() < 1e-5, "Corner [0,0,3,0] should be 3.0");
-        assert!((upsampled[[0, 0, 3, 3]] - 4.0).abs() < 1e-5, "Corner [0,0,3,3] should be 4.0");
-        assert!((upsampled[[0, 3, 0, 0]] - 5.0).abs() < 1e-5, "Corner [0,3,0,0] should be 5.0");
-        assert!((upsampled[[0, 3, 3, 3]] - 8.0).abs() < 1e-5, "Corner [0,3,3,3] should be 8.0");
+        assert!(
+            (upsampled[[0, 0, 0, 0]] - 1.0).abs() < 1e-5,
+            "Corner [0,0,0,0] should be 1.0"
+        );
+        assert!(
+            (upsampled[[0, 0, 0, 3]] - 2.0).abs() < 1e-5,
+            "Corner [0,0,0,3] should be 2.0"
+        );
+        assert!(
+            (upsampled[[0, 0, 3, 0]] - 3.0).abs() < 1e-5,
+            "Corner [0,0,3,0] should be 3.0"
+        );
+        assert!(
+            (upsampled[[0, 0, 3, 3]] - 4.0).abs() < 1e-5,
+            "Corner [0,0,3,3] should be 4.0"
+        );
+        assert!(
+            (upsampled[[0, 3, 0, 0]] - 5.0).abs() < 1e-5,
+            "Corner [0,3,0,0] should be 5.0"
+        );
+        assert!(
+            (upsampled[[0, 3, 3, 3]] - 8.0).abs() < 1e-5,
+            "Corner [0,3,3,3] should be 8.0"
+        );
 
         // Check interpolated values
         // [0,0,0,1] maps to in_x = 1/3 = 0.333, interpolating between 1 and 2
@@ -489,7 +549,14 @@ mod tests {
             for y in 2..18 {
                 for x in 2..18 {
                     let diff = (output[[z, y, x]] - image[[z, y, x]]).abs();
-                    assert!(diff < 1.0, "Diff too large at [{}, {}, {}]: {}", z, y, x, diff);
+                    assert!(
+                        diff < 1.0,
+                        "Diff too large at [{}, {}, {}]: {}",
+                        z,
+                        y,
+                        x,
+                        diff
+                    );
                 }
             }
         }
@@ -523,7 +590,11 @@ mod tests {
                     assert!(
                         diff < 1.0,
                         "Diff too large at [{}, {}, {}]: expected {}, got {}",
-                        z, y, x, expected, actual
+                        z,
+                        y,
+                        x,
+                        expected,
+                        actual
                     );
                 }
             }
@@ -532,8 +603,9 @@ mod tests {
 
     #[test]
     fn test_apply_warp_identity_f16() {
-        let image =
-            Array3::from_shape_fn((20, 20, 20), |(z, y, x)| f16::from_f32((z * 100 + y * 10 + x) as f32));
+        let image = Array3::from_shape_fn((20, 20, 20), |(z, y, x)| {
+            f16::from_f32((z * 100 + y * 10 + x) as f32)
+        });
         let warp_field = Array4::<f32>::zeros((4, 5, 5, 5));
 
         let output = apply_warp_3d_f16(&image.view(), &warp_field.view(), f16::ZERO);
@@ -542,7 +614,14 @@ mod tests {
             for y in 2..18 {
                 for x in 2..18 {
                     let diff = (output[[z, y, x]].to_f32() - image[[z, y, x]].to_f32()).abs();
-                    assert!(diff < 2.0, "Diff too large at [{}, {}, {}]: {}", z, y, x, diff);
+                    assert!(
+                        diff < 2.0,
+                        "Diff too large at [{}, {}, {}]: {}",
+                        z,
+                        y,
+                        x,
+                        diff
+                    );
                 }
             }
         }
@@ -559,7 +638,14 @@ mod tests {
             for y in 2..18 {
                 for x in 2..18 {
                     let diff = (output[[z, y, x]] as i32 - image[[z, y, x]] as i32).abs();
-                    assert!(diff <= 1, "Diff too large at [{}, {}, {}]: {}", z, y, x, diff);
+                    assert!(
+                        diff <= 1,
+                        "Diff too large at [{}, {}, {}]: {}",
+                        z,
+                        y,
+                        x,
+                        diff
+                    );
                 }
             }
         }
@@ -617,7 +703,9 @@ mod tests {
                         output_avx2[[z, y, x]],
                         output_avx512[[z, y, x]],
                         "AVX2 and AVX512 differ at [{}, {}, {}]: {} vs {}",
-                        z, y, x,
+                        z,
+                        y,
+                        x,
                         output_avx2[[z, y, x]],
                         output_avx512[[z, y, x]]
                     );
@@ -647,9 +735,12 @@ mod tests {
             for y in 0..wf_h {
                 for x in 0..wf_w {
                     // Random displacement in range [-max_displacement, max_displacement]
-                    warp_field[[0, z, y, x]] = rng.random_range(-max_displacement..max_displacement);
-                    warp_field[[1, z, y, x]] = rng.random_range(-max_displacement..max_displacement);
-                    warp_field[[2, z, y, x]] = rng.random_range(-max_displacement..max_displacement);
+                    warp_field[[0, z, y, x]] =
+                        rng.random_range(-max_displacement..max_displacement);
+                    warp_field[[1, z, y, x]] =
+                        rng.random_range(-max_displacement..max_displacement);
+                    warp_field[[2, z, y, x]] =
+                        rng.random_range(-max_displacement..max_displacement);
                     warp_field[[3, z, y, x]] = rng.random_range(0.0..1.0); // score
                 }
             }
@@ -895,9 +986,9 @@ mod tests {
             for z in 0..img_d {
                 for y in 0..img_h {
                     for x in 0..img_w {
-                        let diff =
-                            (output_avx2[[z, y, x]].to_f32() - output_scalar[[z, y, x]].to_f32())
-                                .abs();
+                        let diff = (output_avx2[[z, y, x]].to_f32()
+                            - output_scalar[[z, y, x]].to_f32())
+                        .abs();
                         max_diff = max_diff.max(diff);
                     }
                 }
@@ -930,9 +1021,8 @@ mod tests {
             let wf_h = 4 + (seed as usize % 5);
             let wf_w = 5 + (seed as usize % 6);
 
-            let image = Array3::from_shape_fn((img_d, img_h, img_w), |_| {
-                rng.random_range(0u8..255u8)
-            });
+            let image =
+                Array3::from_shape_fn((img_d, img_h, img_w), |_| rng.random_range(0u8..255u8));
             let warp_field = generate_random_warp_field(&mut rng, wf_d, wf_h, wf_w, 6.0);
 
             let mut output_scalar = Array3::from_elem((img_d, img_h, img_w), 0u8);
@@ -1062,10 +1152,10 @@ mod tests {
 
         // Test different ratios: warp field much smaller, similar size, and larger than image
         let configs = [
-            (100, 100, 100, 5, 5, 5),    // WF much smaller
-            (50, 50, 50, 10, 10, 10),    // WF smaller
-            (30, 30, 30, 30, 30, 30),    // WF same size
-            (20, 20, 20, 40, 40, 40),    // WF larger
+            (100, 100, 100, 5, 5, 5), // WF much smaller
+            (50, 50, 50, 10, 10, 10), // WF smaller
+            (30, 30, 30, 30, 30, 30), // WF same size
+            (20, 20, 20, 40, 40, 40), // WF larger
         ];
 
         for (img_d, img_h, img_w, wf_d, wf_h, wf_w) in configs {
