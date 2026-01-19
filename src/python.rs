@@ -2,13 +2,18 @@
 
 use half::f16;
 use ndarray::Array3;
-use numpy::{IntoPyArray, PyArray3, PyReadonlyArray2, PyReadonlyArray3, PyUntypedArrayMethods};
+use numpy::{
+    IntoPyArray, PyArray3, PyArrayMethods, PyReadonlyArray2, PyReadonlyArray3,
+    PyReadwriteArray3, PyUntypedArrayMethods,
+};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
 use crate::{
-    affine_transform_3d_f16, affine_transform_3d_f32, affine_transform_3d_u8, apply_warp_3d_f16,
-    apply_warp_3d_f32, apply_warp_3d_u8, set_scalar_fallback_allowed, upsample_warp_field_2x,
+    affine_transform_3d_f16, affine_transform_3d_f16_into, affine_transform_3d_f32,
+    affine_transform_3d_f32_into, affine_transform_3d_u8, affine_transform_3d_u8_into,
+    apply_warp_3d_f16, apply_warp_3d_f32, apply_warp_3d_u8, set_scalar_fallback_allowed,
+    upsample_warp_field_2x,
 };
 
 // =============================================================================
@@ -162,8 +167,13 @@ fn build_info(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
 ///     input: 3D numpy array (float32, float16, or uint8)
 ///     matrix: 4x4 homogeneous transformation matrix (any numeric dtype)
 ///     output_shape: Optional output shape (z, y, x). If None, uses input shape.
+///         Ignored if output is provided.
 ///     cval: Constant value for out-of-bounds (default: 0.0)
 ///     order: Interpolation order (only 1 is supported)
+///     output: Optional pre-allocated output array (same dtype as input).
+///         If provided, the result will be written directly into this array,
+///         avoiding memory allocation. The shape of this array determines
+///         the output shape (output_shape parameter is ignored).
 ///
 /// The matrix format is:
 ///     [[m00, m01, m02, tz],
@@ -172,9 +182,10 @@ fn build_info(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
 ///      [0,   0,   0,   1 ]]
 ///
 /// Returns:
-///     Transformed 3D array (same dtype as input)
+///     Transformed 3D array (same dtype as input). If output was provided,
+///     returns the same array.
 #[pyfunction]
-#[pyo3(signature = (input, matrix, output_shape=None, cval=0.0, order=1))]
+#[pyo3(signature = (input, matrix, output_shape=None, cval=0.0, order=1, output=None))]
 fn affine_transform<'py>(
     py: Python<'py>,
     input: &Bound<'py, PyAny>,
@@ -182,6 +193,7 @@ fn affine_transform<'py>(
     output_shape: Option<(usize, usize, usize)>,
     cval: f64,
     order: i32,
+    output: Option<&Bound<'py, PyAny>>,
 ) -> PyResult<Py<PyAny>> {
     if order != 1 {
         return Err(pyo3::exceptions::PyValueError::new_err(
@@ -202,6 +214,17 @@ fn affine_transform<'py>(
     // Get input dtype and dispatch
     let dtype_name = get_dtype_name(input)?;
 
+    // Validate output dtype matches input if provided
+    if let Some(out) = &output {
+        let out_dtype = get_dtype_name(out)?;
+        if out_dtype != dtype_name {
+            return Err(pyo3::exceptions::PyTypeError::new_err(format!(
+                "Output dtype '{}' does not match input dtype '{}'",
+                out_dtype, dtype_name
+            )));
+        }
+    }
+
     match dtype_name.as_str() {
         "float32" => {
             let input: PyReadonlyArray3<'py, f32> = input.extract().map_err(|e| {
@@ -212,8 +235,24 @@ fn affine_transform<'py>(
             })?;
             let input_array = input.as_array();
             let matrix_array = matrix.as_array();
-            let output = affine_transform_3d_f32(&input_array, &matrix_array, output_shape, cval);
-            Ok(output.into_pyarray(py).into_any().unbind())
+
+            if let Some(out) = output {
+                // Use pre-allocated output
+                let out_array: &Bound<'py, PyArray3<f32>> = out.downcast().map_err(|_| {
+                    pyo3::exceptions::PyTypeError::new_err(
+                        "Output must be a contiguous float32 numpy array",
+                    )
+                })?;
+                let mut out_rw: PyReadwriteArray3<'py, f32> = out_array.readwrite();
+                let mut out_view = out_rw.as_array_mut();
+                affine_transform_3d_f32_into(&input_array, &matrix_array, &mut out_view, cval);
+                drop(out_rw);
+                Ok(out.clone().unbind())
+            } else {
+                let result =
+                    affine_transform_3d_f32(&input_array, &matrix_array, output_shape, cval);
+                Ok(result.into_pyarray(py).into_any().unbind())
+            }
         }
         "float16" => {
             let input: PyReadonlyArray3<'py, u16> = input
@@ -242,20 +281,56 @@ fn affine_transform<'py>(
                 })?;
 
             let matrix_array = matrix.as_array();
-            let output = affine_transform_3d_f16(&input_array, &matrix_array, output_shape, cval);
 
-            // Reinterpret f16 output as u16 for numpy, then view as float16
-            let out_shape = output.dim();
-            let output_u16: Array3<u16> = unsafe {
-                let ptr = output.as_ptr() as *const u16;
-                let slice = std::slice::from_raw_parts(ptr, output.len());
-                Array3::from_shape_vec(out_shape, slice.to_vec()).unwrap()
-            };
+            if let Some(out) = output {
+                // View as uint16 to get mutable access, then reinterpret as f16
+                let out_view_any = out.getattr("view")?;
+                let out_u16_any =
+                    out_view_any.call1((py.import("numpy")?.getattr("uint16")?,))?;
+                let out_u16: &Bound<'py, PyArray3<u16>> = out_u16_any.downcast().map_err(|_| {
+                    pyo3::exceptions::PyTypeError::new_err(
+                        "Output must be a contiguous float16 numpy array",
+                    )
+                })?;
+                let mut out_rw: PyReadwriteArray3<'py, u16> = out_u16.readwrite();
 
-            let result = output_u16.into_pyarray(py);
-            let float16_result =
-                result.call_method1("view", (py.import("numpy")?.getattr("float16")?,))?;
-            Ok(float16_result.unbind())
+                let out_shape = out_rw.shape();
+                let (od, oh, ow) = (out_shape[0], out_shape[1], out_shape[2]);
+                let out_slice = out_rw.as_slice_mut()?;
+
+                // Reinterpret u16 as f16
+                let out_f16: &mut [f16] = unsafe {
+                    std::slice::from_raw_parts_mut(
+                        out_slice.as_mut_ptr() as *mut f16,
+                        out_slice.len(),
+                    )
+                };
+
+                let mut out_view =
+                    ndarray::ArrayViewMut3::from_shape((od, oh, ow), out_f16).map_err(|e| {
+                        pyo3::exceptions::PyValueError::new_err(format!("Shape error: {}", e))
+                    })?;
+
+                affine_transform_3d_f16_into(&input_array, &matrix_array, &mut out_view, cval);
+                drop(out_rw);
+                Ok(out.clone().unbind())
+            } else {
+                let result =
+                    affine_transform_3d_f16(&input_array, &matrix_array, output_shape, cval);
+
+                // Reinterpret f16 output as u16 for numpy, then view as float16
+                let out_shape = result.dim();
+                let output_u16: Array3<u16> = unsafe {
+                    let ptr = result.as_ptr() as *const u16;
+                    let slice = std::slice::from_raw_parts(ptr, result.len());
+                    Array3::from_shape_vec(out_shape, slice.to_vec()).unwrap()
+                };
+
+                let numpy_result = output_u16.into_pyarray(py);
+                let float16_result = numpy_result
+                    .call_method1("view", (py.import("numpy")?.getattr("float16")?,))?;
+                Ok(float16_result.unbind())
+            }
         }
         "uint8" => {
             let input: PyReadonlyArray3<'py, u8> = input.extract().map_err(|e| {
@@ -267,8 +342,24 @@ fn affine_transform<'py>(
             let input_array = input.as_array();
             let matrix_array = matrix.as_array();
             let cval_u8 = cval.round().clamp(0.0, 255.0) as u8;
-            let output = affine_transform_3d_u8(&input_array, &matrix_array, output_shape, cval_u8);
-            Ok(output.into_pyarray(py).into_any().unbind())
+
+            if let Some(out) = output {
+                // Use pre-allocated output
+                let out_array: &Bound<'py, PyArray3<u8>> = out.downcast().map_err(|_| {
+                    pyo3::exceptions::PyTypeError::new_err(
+                        "Output must be a contiguous uint8 numpy array",
+                    )
+                })?;
+                let mut out_rw: PyReadwriteArray3<'py, u8> = out_array.readwrite();
+                let mut out_view = out_rw.as_array_mut();
+                affine_transform_3d_u8_into(&input_array, &matrix_array, &mut out_view, cval_u8);
+                drop(out_rw);
+                Ok(out.clone().unbind())
+            } else {
+                let result =
+                    affine_transform_3d_u8(&input_array, &matrix_array, output_shape, cval_u8);
+                Ok(result.into_pyarray(py).into_any().unbind())
+            }
         }
         _ => Err(pyo3::exceptions::PyTypeError::new_err(format!(
             "Unsupported dtype '{}'. Supported dtypes: float32, float16, uint8",

@@ -75,7 +75,7 @@ pub fn check_scalar_fallback(operation: &str) {
 mod python;
 
 pub use half::f16;
-use ndarray::{Array3, ArrayView2, ArrayView3};
+use ndarray::{Array3, ArrayView2, ArrayView3, ArrayViewMut3};
 
 // Re-export warp functions
 pub use warp::{apply_warp_3d_f16, apply_warp_3d_f32, apply_warp_3d_u8, upsample_warp_field_2x};
@@ -274,6 +274,57 @@ pub fn affine_transform_3d_f32(
     affine_transform_3d_f32_internal(input, &matrix, &shift, shape, cval)
 }
 
+/// Apply 3D affine transformation with trilinear interpolation into a pre-allocated output (f32)
+///
+/// This variant writes directly into the provided output array, avoiding allocation.
+///
+/// # Arguments
+///
+/// * `input` - 3D input array
+/// * `homogeneous_matrix` - 4x4 homogeneous transformation matrix
+/// * `output` - Pre-allocated output array (will be overwritten)
+/// * `cval` - Constant value for out-of-bounds coordinates
+#[inline]
+pub fn affine_transform_3d_f32_into(
+    input: &ArrayView3<f32>,
+    homogeneous_matrix: &ArrayView2<f64>,
+    output: &mut ArrayViewMut3<f32>,
+    cval: f64,
+) {
+    let (matrix, shift) = AffineMatrix3D::from_homogeneous(homogeneous_matrix);
+    affine_transform_3d_f32_into_internal(input, &matrix, &shift, output, cval);
+}
+
+/// Internal implementation that writes into provided output
+#[inline]
+fn affine_transform_3d_f32_into_internal(
+    input: &ArrayView3<f32>,
+    matrix: &AffineMatrix3D,
+    shift: &[f64; 3],
+    output: &mut ArrayViewMut3<f32>,
+    cval: f64,
+) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            unsafe {
+                simd::avx512::trilinear_3d_f32_avx512(input, output, matrix, shift, cval);
+            }
+            return;
+        }
+
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            unsafe {
+                simd::avx2::trilinear_3d_f32_avx2(input, output, matrix, shift, cval);
+            }
+            return;
+        }
+    }
+
+    check_scalar_fallback("affine_transform_3d_f32");
+    scalar::trilinear_3d_scalar(input, output, matrix, shift, cval);
+}
+
 /// Internal implementation that takes decomposed matrix and shift
 #[inline]
 fn affine_transform_3d_f32_internal(
@@ -343,6 +394,60 @@ pub fn affine_transform_3d_f16(
     let (matrix, shift) = AffineMatrix3D::from_homogeneous(homogeneous_matrix);
     let shape = output_shape.unwrap_or_else(|| input.dim());
     affine_transform_3d_f16_internal(input, &matrix, &shift, shape, cval)
+}
+
+/// Apply 3D affine transformation with trilinear interpolation into a pre-allocated output (f16)
+///
+/// This variant writes directly into the provided output array, avoiding allocation.
+///
+/// # Arguments
+///
+/// * `input` - 3D input array (f16)
+/// * `homogeneous_matrix` - 4x4 homogeneous transformation matrix
+/// * `output` - Pre-allocated output array (will be overwritten)
+/// * `cval` - Constant value for out-of-bounds coordinates
+#[inline]
+pub fn affine_transform_3d_f16_into(
+    input: &ArrayView3<f16>,
+    homogeneous_matrix: &ArrayView2<f64>,
+    output: &mut ArrayViewMut3<f16>,
+    cval: f64,
+) {
+    let (matrix, shift) = AffineMatrix3D::from_homogeneous(homogeneous_matrix);
+    affine_transform_3d_f16_into_internal(input, &matrix, &shift, output, cval);
+}
+
+/// Internal implementation that writes into provided output (f16)
+#[inline]
+fn affine_transform_3d_f16_into_internal(
+    input: &ArrayView3<f16>,
+    matrix: &AffineMatrix3D,
+    shift: &[f64; 3],
+    output: &mut ArrayViewMut3<f16>,
+    cval: f64,
+) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            unsafe {
+                simd::avx512::trilinear_3d_f16_avx512(input, output, matrix, shift, cval);
+            }
+            return;
+        }
+
+        if is_x86_feature_detected!("avx2")
+            && is_x86_feature_detected!("fma")
+            && is_x86_feature_detected!("f16c")
+        {
+            unsafe {
+                simd::avx2::trilinear_3d_f16_avx2(input, output, matrix, shift, cval);
+            }
+            return;
+        }
+    }
+
+    check_scalar_fallback("affine_transform_3d_f16");
+    scalar::trilinear_3d_f16_scalar(input, output, matrix, shift, cval);
 }
 
 /// Internal implementation that takes decomposed matrix and shift
@@ -421,6 +526,50 @@ pub fn affine_transform_3d_u8(
     let (matrix, shift) = AffineMatrix3D::from_homogeneous(homogeneous_matrix);
     let shape = output_shape.unwrap_or_else(|| input.dim());
     affine_transform_3d_u8_internal(input, &matrix, &shift, shape, cval)
+}
+
+/// Apply 3D affine transformation with trilinear interpolation into a pre-allocated output (u8)
+///
+/// This variant writes directly into the provided output array, avoiding allocation.
+///
+/// # Arguments
+///
+/// * `input` - 3D input array (u8)
+/// * `homogeneous_matrix` - 4x4 homogeneous transformation matrix
+/// * `output` - Pre-allocated output array (will be overwritten)
+/// * `cval` - Constant value for out-of-bounds coordinates
+#[inline]
+pub fn affine_transform_3d_u8_into(
+    input: &ArrayView3<u8>,
+    homogeneous_matrix: &ArrayView2<f64>,
+    output: &mut ArrayViewMut3<u8>,
+    cval: u8,
+) {
+    let (matrix, shift) = AffineMatrix3D::from_homogeneous(homogeneous_matrix);
+    affine_transform_3d_u8_into_internal(input, &matrix, &shift, output, cval);
+}
+
+/// Internal implementation that writes into provided output (u8)
+#[inline]
+fn affine_transform_3d_u8_into_internal(
+    input: &ArrayView3<u8>,
+    matrix: &AffineMatrix3D,
+    shift: &[f64; 3],
+    output: &mut ArrayViewMut3<u8>,
+    cval: u8,
+) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            unsafe {
+                simd::avx2::trilinear_3d_u8_avx2(input, output, matrix, shift, cval);
+            }
+            return;
+        }
+    }
+
+    check_scalar_fallback("affine_transform_3d_u8");
+    scalar::trilinear_3d_u8_scalar(input, output, matrix, shift, cval);
 }
 
 /// Internal implementation that takes decomposed matrix and shift
