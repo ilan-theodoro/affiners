@@ -269,6 +269,7 @@ pub fn apply_warp_3d_f32(
     // Dispatch to best available SIMD implementation
     #[cfg(target_arch = "x86_64")]
     {
+        #[cfg(has_stable_avx512)]
         if is_x86_feature_detected!("avx512f") {
             unsafe {
                 crate::simd::avx512::apply_warp_3d_f32_avx512(
@@ -324,6 +325,7 @@ pub fn apply_warp_3d_f16(
 
     #[cfg(target_arch = "x86_64")]
     {
+        #[cfg(has_stable_avx512)]
         if is_x86_feature_detected!("avx512f") {
             unsafe {
                 crate::simd::avx512::apply_warp_3d_f16_avx512(
@@ -382,6 +384,7 @@ pub fn apply_warp_3d_u8(
 
     #[cfg(target_arch = "x86_64")]
     {
+        #[cfg(has_stable_avx512)]
         if is_x86_feature_detected!("avx512f") {
             unsafe {
                 crate::simd::avx512::apply_warp_3d_u8_avx512(
@@ -651,7 +654,7 @@ mod tests {
         }
     }
 
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(all(target_arch = "x86_64", has_stable_avx512))]
     #[test]
     fn test_avx2_avx512_match_exactly() {
         // Verify AVX2 and AVX512 produce identical results for f32
@@ -814,7 +817,7 @@ mod tests {
         }
     }
 
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(all(target_arch = "x86_64", has_stable_avx512))]
     #[test]
     fn test_random_flow_field_avx512_vs_scalar_f32() {
         if !is_x86_feature_detected!("avx512f") {
@@ -873,7 +876,7 @@ mod tests {
         }
     }
 
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(all(target_arch = "x86_64", has_stable_avx512))]
     #[test]
     fn test_random_flow_field_avx2_vs_avx512_f32() {
         if !is_x86_feature_detected!("avx2")

@@ -306,6 +306,7 @@ fn affine_transform_3d_f32_into_internal(
 ) {
     #[cfg(target_arch = "x86_64")]
     {
+        #[cfg(has_stable_avx512)]
         if is_x86_feature_detected!("avx512f") {
             unsafe {
                 simd::avx512::trilinear_3d_f32_avx512(input, output, matrix, shift, cval);
@@ -338,6 +339,7 @@ fn affine_transform_3d_f32_internal(
 
     #[cfg(target_arch = "x86_64")]
     {
+        #[cfg(has_stable_avx512)]
         if is_x86_feature_detected!("avx512f") {
             unsafe {
                 simd::avx512::trilinear_3d_f32_avx512(
@@ -428,6 +430,7 @@ fn affine_transform_3d_f16_into_internal(
 ) {
     #[cfg(target_arch = "x86_64")]
     {
+        #[cfg(has_stable_avx512)]
         if is_x86_feature_detected!("avx512f") {
             unsafe {
                 simd::avx512::trilinear_3d_f16_avx512(input, output, matrix, shift, cval);
@@ -463,6 +466,7 @@ fn affine_transform_3d_f16_internal(
 
     #[cfg(target_arch = "x86_64")]
     {
+        #[cfg(has_stable_avx512)]
         if is_x86_feature_detected!("avx512f") {
             unsafe {
                 simd::avx512::trilinear_3d_f16_avx512(
