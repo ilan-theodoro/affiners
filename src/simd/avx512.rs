@@ -702,7 +702,7 @@ unsafe fn process_z_slice_f16_avx512(
 // =============================================================================
 
 use crate::scalar::{
-    interp_8_neighbors_warp, trilinear_interp_image_warp_f16, trilinear_interp_image_warp_f32,
+    trilinear_interp_image_warp_f16, trilinear_interp_image_warp_f32,
     trilinear_interp_image_warp_u8,
 };
 use ndarray::ArrayView4;
@@ -834,9 +834,6 @@ unsafe fn process_warp_z_slice_f32_avx512(
     let wf_z1_clamped = (wf_z0_clamped + 1).min(wf_d - 1);
     let fz_wf = wf_z_clamped - wf_z_clamped.floor();
 
-    let one = _mm512_set1_ps(1.0);
-    let half = _mm512_set1_ps(0.5);
-
     for oy in 0..img_h {
         let oy_f = oy as f32;
         let wf_y = oy_f * scale_y - 0.5;
@@ -846,223 +843,80 @@ unsafe fn process_warp_z_slice_f32_avx512(
         let fy_wf = wf_y_clamped - wf_y_clamped.floor();
 
         let row_start = oy * img_w;
-        let mut ox = 0usize;
 
-        // AVX512 loop - process 16 voxels at a time
-        while ox + 15 < img_w {
-            let vx = _mm512_setr_ps(
-                ox as f32,
-                (ox + 1) as f32,
-                (ox + 2) as f32,
-                (ox + 3) as f32,
-                (ox + 4) as f32,
-                (ox + 5) as f32,
-                (ox + 6) as f32,
-                (ox + 7) as f32,
-                (ox + 8) as f32,
-                (ox + 9) as f32,
-                (ox + 10) as f32,
-                (ox + 11) as f32,
-                (ox + 12) as f32,
-                (ox + 13) as f32,
-                (ox + 14) as f32,
-                (ox + 15) as f32,
-            );
+        // Precompute warp field base indices for this row
+        let wf_base_z0 = wf_z0_clamped * wf_stride_z;
+        let wf_base_z1 = wf_z1_clamped * wf_stride_z;
+        let wf_base_z0y0 = wf_base_z0 + wf_y0_clamped * wf_stride_y;
+        let wf_base_z0y1 = wf_base_z0 + wf_y1_clamped * wf_stride_y;
+        let wf_base_z1y0 = wf_base_z1 + wf_y0_clamped * wf_stride_y;
+        let wf_base_z1y1 = wf_base_z1 + wf_y1_clamped * wf_stride_y;
 
-            let wf_xs = _mm512_sub_ps(_mm512_mul_ps(vx, _mm512_set1_ps(scale_x)), half);
-            let _wf_x_floor = _mm512_roundscale_ps::<0x01>(wf_xs);
+        // Precompute z/y weights
+        let wz0 = 1.0 - fz_wf;
+        let wz1 = fz_wf;
+        let wy0 = 1.0 - fy_wf;
+        let wy1 = fy_wf;
+        let w_z0y0 = wz0 * wy0;
+        let w_z0y1 = wz0 * wy1;
+        let w_z1y0 = wz1 * wy0;
+        let w_z1y1 = wz1 * wy1;
 
-            let mut dz_arr = [0.0f32; 16];
-            let mut dy_arr = [0.0f32; 16];
-            let mut dx_arr = [0.0f32; 16];
+        // Simple loop - let compiler optimize
+        let wf_w_max = wf_w as f32 - 1.0;
 
-            for j in 0..16 {
-                let wf_x_j = (ox + j) as f32 * scale_x - 0.5;
-                let wf_x_clamped = wf_x_j.clamp(0.0, wf_w as f32 - 1.0);
-                let wf_x0_j = wf_x_clamped.floor() as usize;
-                let wf_x1_j = (wf_x0_j + 1).min(wf_w - 1);
-                let fx_j = wf_x_clamped - wf_x_clamped.floor();
-
-                let (dz, dy, dx) = interp_8_neighbors_warp(
-                    wf_dz_slice,
-                    wf_dy_slice,
-                    wf_dx_slice,
-                    wf_stride_z,
-                    wf_stride_y,
-                    wf_z0_clamped,
-                    wf_y0_clamped,
-                    wf_x0_j,
-                    wf_z1_clamped,
-                    wf_y1_clamped,
-                    wf_x1_j,
-                    fz_wf,
-                    fy_wf,
-                    fx_j,
-                );
-                dz_arr[j] = dz;
-                dy_arr[j] = dy;
-                dx_arr[j] = dx;
-            }
-
-            let dz_vec = _mm512_loadu_ps(dz_arr.as_ptr());
-            let dy_vec = _mm512_loadu_ps(dy_arr.as_ptr());
-            let dx_vec = _mm512_loadu_ps(dx_arr.as_ptr());
-
-            let src_zs = _mm512_sub_ps(_mm512_set1_ps(oz_f), dz_vec);
-            let src_ys = _mm512_sub_ps(_mm512_set1_ps(oy_f), dy_vec);
-            let src_xs = _mm512_sub_ps(vx, dx_vec);
-
-            // Clamp tiny negative values to 0 using mask operations
-            let eps_neg = _mm512_set1_ps(-1e-5);
-            let zero = _mm512_setzero_ps();
-
-            let mask_z = _mm512_cmp_ps_mask::<_CMP_GT_OQ>(src_zs, eps_neg)
-                & _mm512_cmp_ps_mask::<_CMP_LT_OQ>(src_zs, zero);
-            let src_zs = _mm512_mask_blend_ps(mask_z, src_zs, zero);
-
-            let mask_y = _mm512_cmp_ps_mask::<_CMP_GT_OQ>(src_ys, eps_neg)
-                & _mm512_cmp_ps_mask::<_CMP_LT_OQ>(src_ys, zero);
-            let src_ys = _mm512_mask_blend_ps(mask_y, src_ys, zero);
-
-            let mask_x = _mm512_cmp_ps_mask::<_CMP_GT_OQ>(src_xs, eps_neg)
-                & _mm512_cmp_ps_mask::<_CMP_LT_OQ>(src_xs, zero);
-            let src_xs = _mm512_mask_blend_ps(mask_x, src_xs, zero);
-
-            let src_z_floor = _mm512_roundscale_ps::<0x01>(src_zs);
-            let src_y_floor = _mm512_roundscale_ps::<0x01>(src_ys);
-            let src_x_floor = _mm512_roundscale_ps::<0x01>(src_xs);
-
-            let fz = _mm512_sub_ps(src_zs, src_z_floor);
-            let fy = _mm512_sub_ps(src_ys, src_y_floor);
-            let fx = _mm512_sub_ps(src_xs, src_x_floor);
-
-            let one_minus_fx = _mm512_sub_ps(one, fx);
-            let one_minus_fy = _mm512_sub_ps(one, fy);
-            let one_minus_fz = _mm512_sub_ps(one, fz);
-
-            let w000 = _mm512_mul_ps(_mm512_mul_ps(one_minus_fx, one_minus_fy), one_minus_fz);
-            let w001 = _mm512_mul_ps(_mm512_mul_ps(fx, one_minus_fy), one_minus_fz);
-            let w010 = _mm512_mul_ps(_mm512_mul_ps(one_minus_fx, fy), one_minus_fz);
-            let w011 = _mm512_mul_ps(_mm512_mul_ps(fx, fy), one_minus_fz);
-            let w100 = _mm512_mul_ps(_mm512_mul_ps(one_minus_fx, one_minus_fy), fz);
-            let w101 = _mm512_mul_ps(_mm512_mul_ps(fx, one_minus_fy), fz);
-            let w110 = _mm512_mul_ps(_mm512_mul_ps(one_minus_fx, fy), fz);
-            let w111 = _mm512_mul_ps(_mm512_mul_ps(fx, fy), fz);
-
-            let zi = _mm512_cvttps_epi32(src_z_floor);
-            let yi = _mm512_cvttps_epi32(src_y_floor);
-            let xi = _mm512_cvttps_epi32(src_x_floor);
-
-            let mut xi_arr = [0i32; 16];
-            let mut yi_arr = [0i32; 16];
-            let mut zi_arr = [0i32; 16];
-            let mut weights = [[0.0f32; 16]; 8];
-
-            _mm512_storeu_si512(zi_arr.as_mut_ptr() as *mut __m512i, zi);
-            _mm512_storeu_si512(yi_arr.as_mut_ptr() as *mut __m512i, yi);
-            _mm512_storeu_si512(xi_arr.as_mut_ptr() as *mut __m512i, xi);
-
-            _mm512_storeu_ps(weights[0].as_mut_ptr(), w000);
-            _mm512_storeu_ps(weights[1].as_mut_ptr(), w001);
-            _mm512_storeu_ps(weights[2].as_mut_ptr(), w010);
-            _mm512_storeu_ps(weights[3].as_mut_ptr(), w011);
-            _mm512_storeu_ps(weights[4].as_mut_ptr(), w100);
-            _mm512_storeu_ps(weights[5].as_mut_ptr(), w101);
-            _mm512_storeu_ps(weights[6].as_mut_ptr(), w110);
-            _mm512_storeu_ps(weights[7].as_mut_ptr(), w111);
-
-            let mut result = [0.0f32; 16];
-
-            for j in 0..16 {
-                let z0 = zi_arr[j];
-                let y0 = yi_arr[j];
-                let x0 = xi_arr[j];
-
-                if x0 >= 0
-                    && x0 < img_w as i32
-                    && y0 >= 0
-                    && y0 < img_h as i32
-                    && z0 >= 0
-                    && z0 < img_d as i32
-                {
-                    let z0u = z0 as usize;
-                    let y0u = y0 as usize;
-                    let x0u = x0 as usize;
-                    let z1u = (z0u + 1).min(img_d - 1);
-                    let y1u = (y0u + 1).min(img_h - 1);
-                    let x1u = (x0u + 1).min(img_w - 1);
-
-                    let idx000 = z0u * img_stride_z + y0u * img_stride_y + x0u;
-                    let idx001 = z0u * img_stride_z + y0u * img_stride_y + x1u;
-                    let idx010 = z0u * img_stride_z + y1u * img_stride_y + x0u;
-                    let idx011 = z0u * img_stride_z + y1u * img_stride_y + x1u;
-                    let idx100 = z1u * img_stride_z + y0u * img_stride_y + x0u;
-                    let idx101 = z1u * img_stride_z + y0u * img_stride_y + x1u;
-                    let idx110 = z1u * img_stride_z + y1u * img_stride_y + x0u;
-                    let idx111 = z1u * img_stride_z + y1u * img_stride_y + x1u;
-
-                    result[j] = image_slice[idx000] * weights[0][j]
-                        + image_slice[idx001] * weights[1][j]
-                        + image_slice[idx010] * weights[2][j]
-                        + image_slice[idx011] * weights[3][j]
-                        + image_slice[idx100] * weights[4][j]
-                        + image_slice[idx101] * weights[5][j]
-                        + image_slice[idx110] * weights[6][j]
-                        + image_slice[idx111] * weights[7][j];
-                } else {
-                    result[j] = cval;
-                }
-            }
-
-            let vresult = _mm512_loadu_ps(result.as_ptr());
-            _mm512_storeu_ps(slice_z[row_start + ox..].as_mut_ptr(), vresult);
-            ox += 16;
-        }
-
-        // Scalar cleanup for remaining voxels
-        while ox < img_w {
+        for ox in 0..img_w {
             let ox_f = ox as f32;
-            let wf_x = ox_f * scale_x - 0.5;
-            let wf_x0 = wf_x.floor() as i32;
-            let wf_x0_clamped = wf_x0.clamp(0, wf_w as i32 - 1) as usize;
-            let wf_x1_clamped = (wf_x0_clamped + 1).min(wf_w - 1);
-            let fx_wf = (wf_x - wf_x.floor()).clamp(0.0, 1.0);
+            let wf_x = (ox_f * scale_x - 0.5).clamp(0.0, wf_w_max);
+            let wf_x_floor = wf_x.floor();
+            let x0 = wf_x_floor as usize;
+            let x1 = (x0 + 1).min(wf_w - 1);
+            let fx = wf_x - wf_x_floor;
 
-            let (dz, dy, dx) = interp_8_neighbors_warp(
-                wf_dz_slice,
-                wf_dy_slice,
-                wf_dx_slice,
-                wf_stride_z,
-                wf_stride_y,
-                wf_z0_clamped,
-                wf_y0_clamped,
-                wf_x0_clamped,
-                wf_z1_clamped,
-                wf_y1_clamped,
-                wf_x1_clamped,
-                fz_wf,
-                fy_wf,
-                fx_wf,
-            );
+            let wx0 = 1.0 - fx;
+            let wx1 = fx;
 
-            let src_z = oz_f - dz;
-            let src_y = oy_f - dy;
-            let src_x = ox_f - dx;
+            let w000 = w_z0y0 * wx0;
+            let w001 = w_z0y0 * wx1;
+            let w010 = w_z0y1 * wx0;
+            let w011 = w_z0y1 * wx1;
+            let w100 = w_z1y0 * wx0;
+            let w101 = w_z1y0 * wx1;
+            let w110 = w_z1y1 * wx0;
+            let w111 = w_z1y1 * wx1;
+
+            let dz = *wf_dz_slice.get_unchecked(wf_base_z0y0 + x0) * w000
+                + *wf_dz_slice.get_unchecked(wf_base_z0y0 + x1) * w001
+                + *wf_dz_slice.get_unchecked(wf_base_z0y1 + x0) * w010
+                + *wf_dz_slice.get_unchecked(wf_base_z0y1 + x1) * w011
+                + *wf_dz_slice.get_unchecked(wf_base_z1y0 + x0) * w100
+                + *wf_dz_slice.get_unchecked(wf_base_z1y0 + x1) * w101
+                + *wf_dz_slice.get_unchecked(wf_base_z1y1 + x0) * w110
+                + *wf_dz_slice.get_unchecked(wf_base_z1y1 + x1) * w111;
+
+            let dy = *wf_dy_slice.get_unchecked(wf_base_z0y0 + x0) * w000
+                + *wf_dy_slice.get_unchecked(wf_base_z0y0 + x1) * w001
+                + *wf_dy_slice.get_unchecked(wf_base_z0y1 + x0) * w010
+                + *wf_dy_slice.get_unchecked(wf_base_z0y1 + x1) * w011
+                + *wf_dy_slice.get_unchecked(wf_base_z1y0 + x0) * w100
+                + *wf_dy_slice.get_unchecked(wf_base_z1y0 + x1) * w101
+                + *wf_dy_slice.get_unchecked(wf_base_z1y1 + x0) * w110
+                + *wf_dy_slice.get_unchecked(wf_base_z1y1 + x1) * w111;
+
+            let dx = *wf_dx_slice.get_unchecked(wf_base_z0y0 + x0) * w000
+                + *wf_dx_slice.get_unchecked(wf_base_z0y0 + x1) * w001
+                + *wf_dx_slice.get_unchecked(wf_base_z0y1 + x0) * w010
+                + *wf_dx_slice.get_unchecked(wf_base_z0y1 + x1) * w011
+                + *wf_dx_slice.get_unchecked(wf_base_z1y0 + x0) * w100
+                + *wf_dx_slice.get_unchecked(wf_base_z1y0 + x1) * w101
+                + *wf_dx_slice.get_unchecked(wf_base_z1y1 + x0) * w110
+                + *wf_dx_slice.get_unchecked(wf_base_z1y1 + x1) * w111;
 
             let value = trilinear_interp_image_warp_f32(
-                image_slice,
-                img_d,
-                img_h,
-                img_w,
-                img_stride_z,
-                img_stride_y,
-                src_z,
-                src_y,
-                src_x,
-                cval,
+                image_slice, img_d, img_h, img_w, img_stride_z, img_stride_y,
+                oz_f - dz, oy_f - dy, ox_f - dx, cval,
             );
             slice_z[row_start + ox] = value;
-            ox += 1;
         }
     }
 }
@@ -1165,6 +1019,7 @@ pub unsafe fn apply_warp_3d_f16_avx512(
     }
 }
 
+// Tile size for Y dimension - tuned for cache locality
 #[target_feature(enable = "avx512f")]
 #[allow(clippy::too_many_arguments)]
 unsafe fn process_warp_z_slice_f16_avx512(
@@ -1206,46 +1061,77 @@ unsafe fn process_warp_z_slice_f16_avx512(
 
         let row_start = oy * img_w;
 
+        // Precompute warp field base indices for this row
+        let wf_base_z0 = wf_z0_clamped * wf_stride_z;
+        let wf_base_z1 = wf_z1_clamped * wf_stride_z;
+        let wf_base_z0y0 = wf_base_z0 + wf_y0_clamped * wf_stride_y;
+        let wf_base_z0y1 = wf_base_z0 + wf_y1_clamped * wf_stride_y;
+        let wf_base_z1y0 = wf_base_z1 + wf_y0_clamped * wf_stride_y;
+        let wf_base_z1y1 = wf_base_z1 + wf_y1_clamped * wf_stride_y;
+
+        // Precompute z/y weights
+        let wz0 = 1.0 - fz_wf;
+        let wz1 = fz_wf;
+        let wy0 = 1.0 - fy_wf;
+        let wy1 = fy_wf;
+        let w_z0y0 = wz0 * wy0;
+        let w_z0y1 = wz0 * wy1;
+        let w_z1y0 = wz1 * wy0;
+        let w_z1y1 = wz1 * wy1;
+
+        // Simple loop - let compiler optimize
+        let wf_w_max = wf_w as f32 - 1.0;
+
         for ox in 0..img_w {
             let ox_f = ox as f32;
-            let wf_x = ox_f * scale_x - 0.5;
-            let wf_x_clamped = wf_x.clamp(0.0, wf_w as f32 - 1.0);
-            let wf_x0_clamped = wf_x_clamped.floor() as usize;
-            let wf_x1_clamped = (wf_x0_clamped + 1).min(wf_w - 1);
-            let fx_wf = wf_x_clamped - wf_x_clamped.floor();
+            let wf_x = (ox_f * scale_x - 0.5).clamp(0.0, wf_w_max);
+            let wf_x_floor = wf_x.floor();
+            let x0 = wf_x_floor as usize;
+            let x1 = (x0 + 1).min(wf_w - 1);
+            let fx = wf_x - wf_x_floor;
 
-            let (dz, dy, dx) = interp_8_neighbors_warp(
-                wf_dz_slice,
-                wf_dy_slice,
-                wf_dx_slice,
-                wf_stride_z,
-                wf_stride_y,
-                wf_z0_clamped,
-                wf_y0_clamped,
-                wf_x0_clamped,
-                wf_z1_clamped,
-                wf_y1_clamped,
-                wf_x1_clamped,
-                fz_wf,
-                fy_wf,
-                fx_wf,
-            );
+            let wx0 = 1.0 - fx;
+            let wx1 = fx;
 
-            let src_z = oz_f - dz;
-            let src_y = oy_f - dy;
-            let src_x = ox_f - dx;
+            let w000 = w_z0y0 * wx0;
+            let w001 = w_z0y0 * wx1;
+            let w010 = w_z0y1 * wx0;
+            let w011 = w_z0y1 * wx1;
+            let w100 = w_z1y0 * wx0;
+            let w101 = w_z1y0 * wx1;
+            let w110 = w_z1y1 * wx0;
+            let w111 = w_z1y1 * wx1;
+
+            let dz = *wf_dz_slice.get_unchecked(wf_base_z0y0 + x0) * w000
+                + *wf_dz_slice.get_unchecked(wf_base_z0y0 + x1) * w001
+                + *wf_dz_slice.get_unchecked(wf_base_z0y1 + x0) * w010
+                + *wf_dz_slice.get_unchecked(wf_base_z0y1 + x1) * w011
+                + *wf_dz_slice.get_unchecked(wf_base_z1y0 + x0) * w100
+                + *wf_dz_slice.get_unchecked(wf_base_z1y0 + x1) * w101
+                + *wf_dz_slice.get_unchecked(wf_base_z1y1 + x0) * w110
+                + *wf_dz_slice.get_unchecked(wf_base_z1y1 + x1) * w111;
+
+            let dy = *wf_dy_slice.get_unchecked(wf_base_z0y0 + x0) * w000
+                + *wf_dy_slice.get_unchecked(wf_base_z0y0 + x1) * w001
+                + *wf_dy_slice.get_unchecked(wf_base_z0y1 + x0) * w010
+                + *wf_dy_slice.get_unchecked(wf_base_z0y1 + x1) * w011
+                + *wf_dy_slice.get_unchecked(wf_base_z1y0 + x0) * w100
+                + *wf_dy_slice.get_unchecked(wf_base_z1y0 + x1) * w101
+                + *wf_dy_slice.get_unchecked(wf_base_z1y1 + x0) * w110
+                + *wf_dy_slice.get_unchecked(wf_base_z1y1 + x1) * w111;
+
+            let dx = *wf_dx_slice.get_unchecked(wf_base_z0y0 + x0) * w000
+                + *wf_dx_slice.get_unchecked(wf_base_z0y0 + x1) * w001
+                + *wf_dx_slice.get_unchecked(wf_base_z0y1 + x0) * w010
+                + *wf_dx_slice.get_unchecked(wf_base_z0y1 + x1) * w011
+                + *wf_dx_slice.get_unchecked(wf_base_z1y0 + x0) * w100
+                + *wf_dx_slice.get_unchecked(wf_base_z1y0 + x1) * w101
+                + *wf_dx_slice.get_unchecked(wf_base_z1y1 + x0) * w110
+                + *wf_dx_slice.get_unchecked(wf_base_z1y1 + x1) * w111;
 
             let value = trilinear_interp_image_warp_f16(
-                image_slice,
-                img_d,
-                img_h,
-                img_w,
-                img_stride_z,
-                img_stride_y,
-                src_z,
-                src_y,
-                src_x,
-                cval,
+                image_slice, img_d, img_h, img_w, img_stride_z, img_stride_y,
+                oz_f - dz, oy_f - dy, ox_f - dx, cval,
             );
             slice_z[row_start + ox] = f16::from_f32(value);
         }
@@ -1391,46 +1277,77 @@ unsafe fn process_warp_z_slice_u8_avx512(
 
         let row_start = oy * img_w;
 
+        // Precompute warp field base indices for this row
+        let wf_base_z0 = wf_z0_clamped * wf_stride_z;
+        let wf_base_z1 = wf_z1_clamped * wf_stride_z;
+        let wf_base_z0y0 = wf_base_z0 + wf_y0_clamped * wf_stride_y;
+        let wf_base_z0y1 = wf_base_z0 + wf_y1_clamped * wf_stride_y;
+        let wf_base_z1y0 = wf_base_z1 + wf_y0_clamped * wf_stride_y;
+        let wf_base_z1y1 = wf_base_z1 + wf_y1_clamped * wf_stride_y;
+
+        // Precompute z/y weights
+        let wz0 = 1.0 - fz_wf;
+        let wz1 = fz_wf;
+        let wy0 = 1.0 - fy_wf;
+        let wy1 = fy_wf;
+        let w_z0y0 = wz0 * wy0;
+        let w_z0y1 = wz0 * wy1;
+        let w_z1y0 = wz1 * wy0;
+        let w_z1y1 = wz1 * wy1;
+
+        // Simple loop - let compiler optimize
+        let wf_w_max = wf_w as f32 - 1.0;
+
         for ox in 0..img_w {
             let ox_f = ox as f32;
-            let wf_x = ox_f * scale_x - 0.5;
-            let wf_x_clamped = wf_x.clamp(0.0, wf_w as f32 - 1.0);
-            let wf_x0_clamped = wf_x_clamped.floor() as usize;
-            let wf_x1_clamped = (wf_x0_clamped + 1).min(wf_w - 1);
-            let fx_wf = wf_x_clamped - wf_x_clamped.floor();
+            let wf_x = (ox_f * scale_x - 0.5).clamp(0.0, wf_w_max);
+            let wf_x_floor = wf_x.floor();
+            let x0 = wf_x_floor as usize;
+            let x1 = (x0 + 1).min(wf_w - 1);
+            let fx = wf_x - wf_x_floor;
 
-            let (dz, dy, dx) = interp_8_neighbors_warp(
-                wf_dz_slice,
-                wf_dy_slice,
-                wf_dx_slice,
-                wf_stride_z,
-                wf_stride_y,
-                wf_z0_clamped,
-                wf_y0_clamped,
-                wf_x0_clamped,
-                wf_z1_clamped,
-                wf_y1_clamped,
-                wf_x1_clamped,
-                fz_wf,
-                fy_wf,
-                fx_wf,
-            );
+            let wx0 = 1.0 - fx;
+            let wx1 = fx;
 
-            let src_z = oz_f - dz;
-            let src_y = oy_f - dy;
-            let src_x = ox_f - dx;
+            let w000 = w_z0y0 * wx0;
+            let w001 = w_z0y0 * wx1;
+            let w010 = w_z0y1 * wx0;
+            let w011 = w_z0y1 * wx1;
+            let w100 = w_z1y0 * wx0;
+            let w101 = w_z1y0 * wx1;
+            let w110 = w_z1y1 * wx0;
+            let w111 = w_z1y1 * wx1;
+
+            let dz = *wf_dz_slice.get_unchecked(wf_base_z0y0 + x0) * w000
+                + *wf_dz_slice.get_unchecked(wf_base_z0y0 + x1) * w001
+                + *wf_dz_slice.get_unchecked(wf_base_z0y1 + x0) * w010
+                + *wf_dz_slice.get_unchecked(wf_base_z0y1 + x1) * w011
+                + *wf_dz_slice.get_unchecked(wf_base_z1y0 + x0) * w100
+                + *wf_dz_slice.get_unchecked(wf_base_z1y0 + x1) * w101
+                + *wf_dz_slice.get_unchecked(wf_base_z1y1 + x0) * w110
+                + *wf_dz_slice.get_unchecked(wf_base_z1y1 + x1) * w111;
+
+            let dy = *wf_dy_slice.get_unchecked(wf_base_z0y0 + x0) * w000
+                + *wf_dy_slice.get_unchecked(wf_base_z0y0 + x1) * w001
+                + *wf_dy_slice.get_unchecked(wf_base_z0y1 + x0) * w010
+                + *wf_dy_slice.get_unchecked(wf_base_z0y1 + x1) * w011
+                + *wf_dy_slice.get_unchecked(wf_base_z1y0 + x0) * w100
+                + *wf_dy_slice.get_unchecked(wf_base_z1y0 + x1) * w101
+                + *wf_dy_slice.get_unchecked(wf_base_z1y1 + x0) * w110
+                + *wf_dy_slice.get_unchecked(wf_base_z1y1 + x1) * w111;
+
+            let dx = *wf_dx_slice.get_unchecked(wf_base_z0y0 + x0) * w000
+                + *wf_dx_slice.get_unchecked(wf_base_z0y0 + x1) * w001
+                + *wf_dx_slice.get_unchecked(wf_base_z0y1 + x0) * w010
+                + *wf_dx_slice.get_unchecked(wf_base_z0y1 + x1) * w011
+                + *wf_dx_slice.get_unchecked(wf_base_z1y0 + x0) * w100
+                + *wf_dx_slice.get_unchecked(wf_base_z1y0 + x1) * w101
+                + *wf_dx_slice.get_unchecked(wf_base_z1y1 + x0) * w110
+                + *wf_dx_slice.get_unchecked(wf_base_z1y1 + x1) * w111;
 
             let value = trilinear_interp_image_warp_u8(
-                image_slice,
-                img_d,
-                img_h,
-                img_w,
-                img_stride_z,
-                img_stride_y,
-                src_z,
-                src_y,
-                src_x,
-                cval,
+                image_slice, img_d, img_h, img_w, img_stride_z, img_stride_y,
+                oz_f - dz, oy_f - dy, ox_f - dx, cval,
             );
             slice_z[row_start + ox] = value.round().clamp(0.0, 255.0) as u8;
         }
